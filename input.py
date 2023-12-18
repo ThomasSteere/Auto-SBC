@@ -1,18 +1,12 @@
 '''INPUTS'''
 
-FORMATION = "4-2-2-2"
-
-NUM_PLAYERS = 11
-
-PLAYERS_IN_POSITION = False # PLAYERS_IN_POSITION = True => No player will be out of position and False implies otherwise.
+NUM_PLAYERS = 3
 
 # This can be used to fix specific players and optimize the rest.
 # Find the Row_ID (starts from 2) of each player to be fixed
 # from the club dataset and plug that in.
 FIX_PLAYERS = []
 
-# Filter out specific players using Row_ID.
-REMOVE_PLAYERS = []
 
 # Change the nature of the objective.
 # By default, the solver tries to minimize the overall cost.
@@ -42,26 +36,13 @@ CONSIDER_AS_RARE = {'Rarity': ['Rare', 'UCL Road to the Knockouts'],
                     'League': ['Libertadores'], 'Country': [], 'Club': ['ICON', 'HERO'],
                     'Row_ID': []}
 
-CLUB = [["Real Madrid", "Arsenal"], ["FC Bayern"]]
-NUM_CLUB = [3, 2]  # Total players from i^th list >= NUM_CLUB[i]
+clubId = []
+NUM_clubId = []  # Total players from i^th list >= NUM_clubId[i]
 
-MAX_NUM_CLUB = 2  # Same Club Count: Max X / Max X Players from the Same Club
-MIN_NUM_CLUB = 2  # Same Club Count: Min X / Min X Players from the Same Club
-NUM_UNIQUE_CLUB = [5, "Max"]  # Clubs: Max / Min / Exactly X
+MAX_NUM_clubId = 2  # Same Club Count: Max X / Max X Players from the Same Club
+MIN_NUM_clubId = 2  # Same Club Count: Min X / Min X Players from the Same Club
+NUM_UNIQUE_clubId = [5, "Max"]  # Clubs: Max / Min / Exactly X
 
-LEAGUE = [["Premier League", "LaLiga Santander"]]
-NUM_LEAGUE = [11]  # Total players from i^th list >= NUM_LEAGUE[i]
-
-MAX_NUM_LEAGUE = 4  # Same League Count: Max X / Max X Players from the Same League
-MIN_NUM_LEAGUE = 4  # Same League Count: Min X / Min X Players from the Same League
-NUM_UNIQUE_LEAGUE = [4, "Exactly"]  # Leagues: Max / Min / Exactly X
-
-COUNTRY = [["England", "Spain"], ["Germany"]]
-NUM_COUNTRY = [2, 1] # Total players from i^th list >= NUM_COUNTRY[i]
-
-MAX_NUM_COUNTRY = 3  # Same Nation Count: Max X / Max X Players from the Same Nation
-MIN_NUM_COUNTRY = 5  # Same Nation Count: Min X / Min X Players from the Same Nation
-NUM_UNIQUE_COUNTRY = [5, "Exactly"]  # Nations: Max / Min / Exactly X
 
 RARITY_1 = [['Gold', 'TOTW']]
 NUM_RARITY_1 = [1]  # This is for cases like "Gold IF: Min X (0/X)"
@@ -71,52 +52,73 @@ NUM_RARITY_1 = [1]  # This is for cases like "Gold IF: Min X (0/X)"
 RARITY_2 = ["Rare", "Gold", "Bronze"]
 NUM_RARITY_2 = [0, 0, 11]  # Total players from i^th Rarity >= NUM_RARITY_2[i]
 
-SQUAD_RATING = 80 # Squad Rating: Min XX
+SQUAD_RATING = 0 # Squad Rating: Min XX
 
-MIN_OVERALL = [83]
-NUM_MIN_OVERALL = [1]  # Minimum OVR of XX : Min X
-
-CHEMISTRY = 25  # Squad Total Chemistry Points: Min X
-                # If there is no constraint on total chemistry, then set this to 0.
+MIN_OVERALL = []
+NUM_MIN_OVERALL = []  # Minimum OVR of XX : Min X
 
 CHEM_PER_PLAYER = 0  # Chemistry Points Per Player: Min X
 
 '''INPUTS'''
 
-formation_dict = {
-    "3-4-1-2": ["GK", "CB", "CB", "CB", "LM", "CM", "CM", "RM", "CAM", "ST", "ST"],
-    "3-4-2-1": ["GK", "CB", "CB", "CB", "LM", "CM", "CM", "RM", "CF", "ST", "CF"],
-    "3-1-4-2": ["GK", "CB", "CB", "CB", "LM", "CM", "CDM", "CM", "RM", "ST", "ST"],
-    "3-4-3": ["GK", "CB", "CB", "CB", "LM", "CM", "CM", "RM", "CAM", "ST", "ST"],
-    "3-5-2": ["GK", "CB", "CB", "CB", "CDM", "CDM", "LM", "CAM", "RM", "ST", "ST"],
-    "3-4-3": ["GK", "CB", "CB", "CB", "LM", "CM", "CM", "RM", "LW", "ST", "RW"],
-    "4-1-2-1-2": ["GK", "LB", "CB", "CB", "RB", "CDM", "LM", "CAM", "RM", "ST", "ST"],
-    "4-1-2-1-2[2]": ["GK", "LB", "CB", "CB", "RB", "CDM", "CM", "CAM", "CM", "ST", "ST"],
-    "4-1-4-1": ["GK", "LB", "CB", "CB", "RB", "CDM", "LM", "CM", "CM", "RM", "ST"],
-    "4-2-1-3": ["GK", "LB", "CB", "CB", "RB", "CDM", "CDM", "CAM", "LW", "ST", "RW"],
-    "4-2-3-1": ["GK", "LB", "CB", "CB", "RB", "CDM", "CDM", "CAM", "CAM", "CAM", "ST"],
-    "4-2-3-1[2]": ["GK", "LB", "CB", "CB", "RB", "CDM", "CDM", "CAM", "LM", "ST", "RM"],
-    "4-2-2-2": ["GK", "LB", "CB", "CB", "RB", "CDM", "CDM", "CAM", "CAM", "ST", "ST"],
-    "4-2-4": ["GK", "LB", "CB", "CB", "RB", "CM", "CM", "LW", "ST", "ST", "RW"],
-    "4-3-1-2": ["GK", "CB", "CB", "LB", "RB", "CM", "CM", "CM", "CAM", "ST", "ST"],
-    "4-1-3-2": ["GK", "LB", "CB", "CB", "RB", "CDM", "LM", "CM", "RM", "ST", "ST"],
-    "4-3-2-1": ["GK", "LB", "CB", "CB", "RB", "CM", "CM", "CM", "CF", "ST", "CF"],
-    "4-3-3": ["GK", "LB", "CB", "CB", "RB", "CM", "CM", "CM", "LW", "ST", "RW"],
-    "4-3-3[2]": ["GK", "LB", "CB", "CB", "RB", "CM", "CDM", "CM", "LW", "ST", "RW"],
-    "4-3-3[3]": ["GK", "LB", "CB", "CB", "RB", "CDM", "CDM", "CM", "LW", "ST", "RW"],
-    "4-3-3[4]": ["GK", "LB", "CB", "CB", "RB", "CM", "CM", "CAM", "LW", "ST", "RW"],
-    "4-3-3[5]": ["GK", "LB", "CB", "CB", "RB", "CDM", "CM", "CM", "LW", "CF", "RW"],
-    "4-4-1-1": ["GK", "LB", "CB", "CB", "RB", "CM", "CM", "LM", "CF", "RM", "ST"],
-    "4-4-1-1[2]": ["GK", "LB", "CB", "CB", "RB", "CM", "CM", "LM", "CAM", "RM", "ST"],
-    "4-4-2": ["GK", "LB", "CB", "CB", "RB", "LM", "CM", "CM", "RM", "ST", "ST"],
-    "4-4-2[2]": ["GK", "LB", "CB", "CB", "RB", "LM", "CDM", "CDM", "RM", "ST", "ST"],
-    "4-5-1": ["GK", "CB", "CB", "LB", "RB", "CM", "LM", "CAM", "CAM", "RM", "ST"],
-    "4-5-1[2]": ["GK", "CB", "CB", "LB", "RB", "CM", "LM", "CM", "CM", "RM", "ST"],
-    "5-2-1-2":["GK", "LWB", "CB", "CB", "CB", "RWB", "CM", "CM", "CAM", "ST", "ST"],
-    "5-2-2-1": ["GK", "LWB", "CB", "CB", "CB", "RWB", "CM", "CM", "LW", "ST", "RW"],
-    "5-3-2": ["GK", "LWB", "CB", "CB", "CB", "RWB", "CM", "CDM", "CM", "ST", "ST"],
-    "5-4-1": ["GK", "LWB", "CB", "CB", "CB", "RWB", "CM", "CM", "LM", "RM", "ST"]
-    }
+SBCEligibilityKey = {
+    "0": "TEAM_STAR_RATING",
+    "2": "PLAYER_COUNT",
+    "3": "PLAYER_QUALITY",
+    "4": "SAME_NATION_COUNT",
+    "5": "SAME_leagueId_COUNT",
+    "6": "SAME_clubId_COUNT",
+    "7": "NATION_COUNT",
+    "8": "leagueId_COUNT",
+    "9": "clubId_COUNT",
+    "10": "NATION_ID",
+    "11": "leagueId_ID",
+    "12": "clubId_ID",
+    "13": "SCOPE",
+    "15": "LEGEND_COUNT",
+    "16": "NUM_TROPHY_REQUIRED",
+    "17": "PLAYER_LEVEL",
+    "18": "PLAYER_RARITY",
+    "19": "TEAM_RATING",
+    "21": "PLAYER_COUNT_COMBINED",
+    "25": "PLAYER_RARITY_GROUP",
+    "26": "PLAYER_MIN_OVR",
+    "27": "PLAYER_EXACT_OVR",
+    "28": "PLAYER_MAX_OVR",
+    "30": "FIRST_OWNER_PLAYERS_COUNT",
+    "33": "PLAYER_TRADABILITY",
+    "35": "CHEMISTRY_POINTS",
+    "36": "ALL_PLAYERS_CHEMISTRY_POINTS",
+    "TEAM_STAR_RATING": 0,
+    "PLAYER_COUNT": 2,
+    "PLAYER_QUALITY": 3,
+    "SAME_NATION_COUNT": 4,
+    "SAME_leagueId_COUNT": 5,
+    "SAME_clubId_COUNT": 6,
+    "NATION_COUNT": 7,
+    "leagueId_COUNT": 8,
+    "clubId_COUNT": 9,
+    "NATION_ID": 10,
+    "leagueId_ID": 11,
+    "clubId_ID": 12,
+    "SCOPE": 13,
+    "LEGEND_COUNT": 15,
+    "NUM_TROPHY_REQUIRED": 16,
+    "PLAYER_LEVEL": 17,
+    "PLAYER_RARITY": 18,
+    "TEAM_RATING": 19,
+    "PLAYER_COUNT_COMBINED": 21,
+    "PLAYER_RARITY_GROUP": 25,
+    "PLAYER_MIN_OVR": 26,
+    "PLAYER_EXACT_OVR": 27,
+    "PLAYER_MAX_OVR": 28,
+    "FIRST_OWNER_PLAYERS_COUNT": 30,
+    "PLAYER_TRADABILITY": 33,
+    "CHEMISTRY_POINTS": 35,
+    "ALL_PLAYERS_CHEMISTRY_POINTS": 36
+}
+
+
 
 status_dict = {
     0: "UNKNOWN: The status of the model is still unknown. A search limit has been reached before any of the statuses below could be determined.",
