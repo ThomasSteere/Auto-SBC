@@ -648,7 +648,7 @@ def fix_players(df, model, player):
         print(f"**They may have already been filtered out**")
     return model
 
-MINIMIZE_MAX_COST=True
+MINIMIZE_MAX_COST=False
 MAXIMIZE_TOTAL_COST=False
 @runtime
 def set_objective(df, model, player):
@@ -656,13 +656,13 @@ def set_objective(df, model, player):
     The default behaviour of the solver is to minimize the overall cost.
     '''
     cost = df["price"].tolist()
-    if input.MINIMIZE_MAX_COST:
+    if MINIMIZE_MAX_COST:
         print("**MINIMIZE_MAX_COST**")
         max_cost = model.NewIntVar(0, df["price"].max(), "max_cost")
         play_cost = [player[i] * cost[i] for i in range(len(cost))]
         model.AddMaxEquality(max_cost, play_cost)
         model.Minimize(max_cost)
-    elif input.MAXIMIZE_TOTAL_COST:
+    elif MAXIMIZE_TOTAL_COST:
         print("**MAXIMIZE_TOTAL_COST**")
         model.Maximize(cp_model.LinearExpr.WeightedSum(player, cost))
     else:
