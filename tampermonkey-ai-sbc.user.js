@@ -8,6 +8,8 @@
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @grant        GM_xmlhttpRequest
+// @updateURL 	 https://github.com/ThomasSteere/AI-SBC/blob/main/tampermonkey-ai-sbc.js
+// @downloadURL  https://github.com/ThomasSteere/AI-SBC/blob/main/tampermonkey-ai-sbc.js
 
 // ==/UserScript==
 
