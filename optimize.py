@@ -13,7 +13,7 @@ def runtime(func):
         seconds = round(time.time() - start, 2)
         print(f"Processing time {func.__name__}: {seconds} seconds")
         return result
-    return wrapper if input.LOG_RUNTIME else func
+    return wrapper 
 
 
 class ObjectiveEarlyStopping(cp_model.CpSolverSolutionCallback):
@@ -648,7 +648,8 @@ def fix_players(df, model, player):
         print(f"**They may have already been filtered out**")
     return model
 
-
+MINIMIZE_MAX_COST=True
+MAXIMIZE_TOTAL_COST=False
 @runtime
 def set_objective(df, model, player):
     '''Set objective based on player cost.
@@ -797,7 +798,7 @@ def SBC(df,sbc):
         df, model, chem, z_teamId, z_leagueId, z_nation, player, players_grouped, num_cnts, map_idx, b_c, b_l, b_n, sbc['formation'], CHEMISTRY,CHEM_PER_PLAYER, NUM_PLAYERS)
 
     '''Fix specific players and optimize the rest'''
-    model = fix_players(df, model, player)
+    # model = fix_players(df, model, player)
 
     '''Set objective based on player cost'''
     model = set_objective(df, model, player)
