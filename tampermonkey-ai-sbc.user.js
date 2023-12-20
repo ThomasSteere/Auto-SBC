@@ -33,6 +33,15 @@
     color: #00ff00;
     z-index: 2;
 }
+   .player.fixed::before {
+    font-family: 'UltimateTeam-Icons';
+    position: absolute;
+    content: '\\E07F';
+    right: 8px;
+    bottom: 2px;
+    color: #ff0000;
+    z-index: 2;
+}
    .item-price{
     width: auto !important;
     padding: 0 0.2rem;
@@ -235,20 +244,9 @@
 				}
 			);
 		});
-	}; // CONCATENATED MODULE: ./src/pages/Content/utils/constants.ts
+	}; 
 	let ApiUrl = 'http://127.0.0.1:8000/solve';
-	let MessageType;
-	(function (MessageType) {
-		MessageType[(MessageType['BACKEND_RESULT'] = 0)] = 'BACKEND_RESULT';
-		MessageType[(MessageType['NOT_AUTHENTICATED'] = 1)] = 'NOT_AUTHENTICATED';
-		MessageType[(MessageType['POST_REQUEST'] = 2)] = 'POST_REQUEST';
-		MessageType[(MessageType['BACKEND_ERROR'] = 3)] = 'BACKEND_ERROR';
-		MessageType[(MessageType['UNEXPECTED_ERROR'] = 4)] = 'UNEXPECTED_ERROR';
-	})(MessageType || (MessageType = {}));
-	let createMessage = function (type, body) {
-		return { type: type, body: body };
-	};
-
+	
 	let LOCKED_ITEMS_KEY = 'lockeditems';
 	let cachedLockedItems;
 	let isItemLocked = function (item) {
@@ -299,6 +297,59 @@
 	};
 	let saveLockedItems = function () {
 		localStorage.setItem(LOCKED_ITEMS_KEY, JSON.stringify(cachedLockedItems));
+	};
+
+
+	let FIXED_ITEMS_KEY = 'fixeditems';
+	let cachedFixedItems;
+	let isItemFixed = function (item) {
+		let fixedItems = getFixedItems();
+		return fixedItems.includes(item.id);
+	};
+	let fixItem = function (item) {
+		let fixedItems = getFixedItems();
+		fixedItems.push(item.id);
+		saveFixedItems();
+	};
+	let unfixItem = function (item) {
+		let fixedItems = getFixedItems();
+
+		if (fixedItems.includes(item.id)) {
+			const index = fixedItems.indexOf(item.id);
+			if (index > -1) {
+				// only splice array when item is found
+				fixedItems.splice(index, 1); // 2nd parameter means remove one item only
+			}
+		}
+		saveFixedItems();
+	};
+	let getFixedItems = function () {
+		if (cachedFixedItems) {
+			return cachedFixedItems;
+		}
+		cachedFixedItems = [];
+		let fixedItems = localStorage.getItem(FIXED_ITEMS_KEY);
+		if (fixedItems) {
+			cachedFixedItems = JSON.parse(fixedItems);
+		}
+		return cachedFixedItems;
+	};
+	let fixedItemsCleanup = function (clubPlayerIds) {
+		let fixedItems = getFixedItems();
+		for (let _i = 0, _a = Array.from(fixedItems); _i < _a.length; _i++) {
+			let fixedItem = _a[_i];
+			if (!clubPlayerIds[fixedItem]) {
+				const index = fixedItems.indexOf(fixedItem);
+				if (index > -1) {
+					// only splice array when item is found
+					fixedItems.splice(index, 1); // 2nd parameter means remove one item only
+				}
+			}
+		}
+		saveFixedItems();
+	};
+	let saveFixedItems = function () {
+		localStorage.setItem(FIXED_ITEMS_KEY, JSON.stringify(cachedFixedItems));
 	};
 
 	const idToPlayerItem = {};
@@ -401,6 +452,7 @@
 							preferredPosition: item.preferredPosition,
 							possiblePositions: item.possiblePositions,
 							groups: item.groups,
+							isFixed: isItemFixed(item),
 							price:
 								getPrice(item) *
 									(duplicateIds.includes(item.id) ? 0.1 : 1) *
@@ -501,6 +553,8 @@
 
 	const lockedLabel = 'Unlock';
 	const unlockedLabel = 'Lock';
+	const fixedLabel = 'Remove Must Use';
+	const unfixedLabel = 'Must Use';
 	const playerItemOverride = () => {
 		const UTDefaultSetItem = UTSlotActionPanelView.prototype.setItem;
 		UTSlotActionPanelView.prototype.setItem = function (e, t) {
@@ -532,6 +586,32 @@
 						lockItem(e);
 						button.setText(lockedLabel);
 						showNotification(`Item locked`, UINotificationType.POSITIVE);
+					}
+					getControllerInstance().applyDataChange();
+					getCurrentViewController()
+						.getCurrentController()
+						._rightController._currentController._renderView();
+				},
+				EventType.TAP
+			);
+
+			const fixLabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
+			const fixbutton = new UTGroupButtonControl();
+			fixbutton.init();
+			fixbutton.setInteractionState(true);
+			fixbutton.setText(fixLabel);
+			insertBefore(button, this._btnPlayerBio.__root);
+			fixbutton.addTarget(
+				this,
+				async () => {
+					if (isItemFixed(e)) {
+						unfixItem(e);
+						fixbutton.setText(unfixedLabel);
+						showNotification(`Removed Must Use`, UINotificationType.POSITIVE);
+					} else {
+						fixItem(e);
+						fixbutton.setText(fixedLabel);
+						showNotification(`Must Use Set`, UINotificationType.POSITIVE);
 					}
 					getControllerInstance().applyDataChange();
 					getCurrentViewController()
@@ -582,6 +662,33 @@
 				);
 				this.lockUnlockButton = button;
 			}
+				const fixlabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
+			if (!this.fixUnfixButton) {
+				const button = new UTGroupButtonControl();
+				button.init();
+				button.setInteractionState(true);
+				button.setText(fixlabel);
+				insertBefore(button, this._playerBioButton.__root);
+				button.addTarget(
+					this,
+					async () => {
+						if (isItemFixed(e)) {
+							unfixItem(e);
+							button.setText(unfixedLabel);
+							showNotification(`Removed Must Use`, UINotificationType.POSITIVE);
+						} else {
+							fixItem(e);
+							button.setText(fixedLabel);
+							showNotification(`Must Use Set`, UINotificationType.POSITIVE);
+						}
+						getCurrentViewController()
+							.getCurrentController()
+							._leftController.refreshList();
+					},
+					EventType.TAP
+				);
+				this.fixUnfixButton = button;
+			}
 			return result;
 		};
 		const UTPlayerItemView_renderItem = UTPlayerItemView.prototype.renderItem;
@@ -601,9 +708,14 @@
 			} else {
 				removeClass(this, 'locked');
 			}
+			if (isItemFixed(item)) {
+				addClass(this, 'fixed');
+			} else {
+				removeClass(this, 'fixed');
+			}
 			return result;
 		};
-	}; // CONCATENATED MODULE: ./src/pages/Content/overrides/web-app-fix.js
+	}; 
 
 
 	let priceCacheMinutes = 60;

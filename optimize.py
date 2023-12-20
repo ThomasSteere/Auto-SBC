@@ -1,5 +1,4 @@
 import json
-import input
 from threading import Timer
 import time
 from ortools.sat.python import cp_model
@@ -628,20 +627,22 @@ def prioritize_duplicates(df, model, player,NUM_PLAYERS):
 
 
 @runtime
-def fix_players(df, model, player):
+def fix_players(df, model, player,NUM_PLAYERS):
     '''Fix specific players and optimize the rest'''
-    if not input.FIX_PLAYERS:
+    FIX_PLAYERS = list(df[(df["isFixed"] == True)].index)
+    if not FIX_PLAYERS:
         return model
+    
     missing_players = []
-    for idx in input.FIX_PLAYERS:
-        idxes = list(df[(df["Original_Idx"] == (idx - 2))].index)
+    for idx in FIX_PLAYERS:
+        idxes = list(df[(df["isFixed"] == True)].index)
         if not idxes:
             missing_players.append(idx)
             continue
         players_to_fix = [player[j] for j in idxes]
         # Note: A selected player may play in multiple possiblePositionss.
         # Any one such version must be fixed.
-        model.Add(cp_model.LinearExpr.Sum(players_to_fix) == 1)
+        model.Add(cp_model.LinearExpr.Sum(players_to_fix) == min(NUM_PLAYERS, len(dup_idxes)))
     if missing_players:
         print(
             f"**Couldn't fix the following players with Row_ID: {missing_players}**")
@@ -689,7 +690,7 @@ def SBC(df,sbc):
     ), df.nationId.nunique()]  # Count of important fields
     map_idx = {}  # Map fields to a unique index
     fields = ["teamId", "leagueId", "nationId", "possiblePositions",
-              "rating", "ratingTier", "groups","rarityId", "name"]
+              "rating", "ratingTier", "groups","rarityId", "name", "isFixed"]
     for field in fields:
         map_idx[field] = get_dict(df, field)
     print('2')
@@ -798,7 +799,7 @@ def SBC(df,sbc):
         df, model, chem, z_teamId, z_leagueId, z_nation, player, players_grouped, num_cnts, map_idx, b_c, b_l, b_n, sbc['formation'], CHEMISTRY,CHEM_PER_PLAYER, NUM_PLAYERS)
 
     '''Fix specific players and optimize the rest'''
-    # model = fix_players(df, model, player)
+    model = fix_players(df, model, player, NUM_PLAYERS)
 
     '''Set objective based on player cost'''
     model = set_objective(df, model, player)
@@ -842,5 +843,12 @@ def SBC(df,sbc):
                 final_players.append(i)
                 df.loc[i, "Chemistry"] = solver.Value(chem_expr[i])
                 df.loc[i, "Is_Pos"] = solver.Value(pos[i])
-    return final_players,input.status_dict[status],status
+    return final_players,status_dict[status],status
 
+status_dict = {
+    0: "UNKNOWN: The status of the model is still unknown. A search limit has been reached before any of the statuses below could be determined.",
+    1: "MODEL_INVALID: The given CpModelProto didn't pass the validation step.",
+    2: "FEASIBLE: A feasible solution has been found. But the search was stopped before we could prove optimality.",
+    3: "INFEASIBLE: The problem has been proven infeasible.",
+    4: "OPTIMAL: An optimal feasible solution has been found."
+}

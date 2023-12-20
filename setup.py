@@ -1,4 +1,4 @@
-import input
+
 import optimize
 import pandas as pd
 from fastapi import Response
@@ -15,7 +15,6 @@ def preprocess_data(df: pd.DataFrame):
 
 
 def runAutoSBC(sbc,players):
-    print(sbc,players[0])
     df = pd.json_normalize(players)
     # Remove All Players not matching quality first
     for req in sbc['constraints']:
@@ -26,8 +25,6 @@ def runAutoSBC(sbc,players):
                     df = df[df["ratingTier"] <= req['eligibilityValues'][0]]
 
     df = preprocess_data(df)
-  
-    # df.to_excel("Club_Pre_Processed.xlsx", index = False)
     final_players,status,status_code = optimize.SBC(df,sbc)
     print(status)
     results=[]
@@ -42,6 +39,7 @@ def runAutoSBC(sbc,players):
         print(f"Total Cost: {df_out['price'].sum()}")
         df_out['Org_Row_ID'] = df_out['Original_Idx'] + 2
         df_out.pop('Original_Idx')
+        print(sbc)
         results = df_out.to_json(orient="records")
     return Response(results, media_type="application/json")
 
