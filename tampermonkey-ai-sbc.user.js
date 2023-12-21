@@ -8,8 +8,8 @@
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @grant        GM_xmlhttpRequest
-// @updateURL 	 https://github.com/ThomasSteere/AI-SBC/blob/main/tampermonkey-ai-sbc.js
-// @downloadURL  https://github.com/ThomasSteere/AI-SBC/blob/main/tampermonkey-ai-sbc.js
+// @updateURL 	 https://github.com/ThomasSteere/AI-SBC/raw/main/tampermonkey-ai-sbc.user.js
+// @downloadURL  https://github.com/ThomasSteere/AI-SBC/raw/main/tampermonkey-ai-sbc.user.js
 
 // ==/UserScript==
 
@@ -154,7 +154,6 @@
 	};
 	const fetchPlayers = ({ count = Infinity, level, rarities, sort } = {}) => {
 		return new Promise((resolve) => {
-			showNotification('Fetching club players');
 			services.Club.clubDao.resetStatsCache();
 			services.Club.getStats();
 			let offset = 0;
@@ -244,9 +243,9 @@
 				}
 			);
 		});
-	}; 
+	};
 	let ApiUrl = 'http://127.0.0.1:8000/solve';
-	
+
 	let LOCKED_ITEMS_KEY = 'lockeditems';
 	let cachedLockedItems;
 	let isItemLocked = function (item) {
@@ -298,7 +297,6 @@
 	let saveLockedItems = function () {
 		localStorage.setItem(LOCKED_ITEMS_KEY, JSON.stringify(cachedLockedItems));
 	};
-
 
 	let FIXED_ITEMS_KEY = 'fixeditems';
 	let cachedFixedItems;
@@ -429,10 +427,13 @@
 				}
 				await fetchPlayerPrices(players);
 				let backendPlayersInput = players
-					.filter((item) => item.loans < 0 && !isItemLocked(item))
+					.filter(
+						(item) =>
+							item.loans < 0 &&
+							(!isItemLocked(item) || duplicateIds.includes(item.id))
+					)
 					.map((item) => {
 						if (!item.groups.length) {
-							console.log(item);
 							item.groups = [0];
 						}
 
@@ -460,14 +461,7 @@
 								(100 - item.rating),
 						};
 					});
-				try {
-					// Clean locked items that are not in the club anymore. We perform the cleanup approximately once per 20 times
-					if (Math.random() > 0.95) {
-						lockedItemsCleanup(idToPlayerItem);
-					}
-				} catch (error) {
-					// Do nothing
-				}
+
 				const input = JSON.stringify({
 					clubPlayers: backendPlayersInput,
 					sbcData: sbcData,
@@ -476,11 +470,18 @@
 					//useConceptPlayers: true,
 				});
 				console.log('Sending SBC to Solve...');
-
-				showNotification('Sending SBC to Solve...');
 				let solution = await makePostRequest(ApiUrl, input);
-
-				console.log(solution);
+				if (solution.status_code != 2 && solution.status_code != 4) {
+					hideLoader();
+					showNotification(solution.status, UINotificationType.NEGATIVE);
+					return;
+				}
+				showNotification(
+					solution.status,
+					solution.status_code != 4
+						? UINotificationType.NEUTRAL
+						: UINotificationType.POSITIVE
+				);
 				const { _squad, _challenge } = getControllerInstance();
 				_squad.removeAllItems();
 
@@ -489,7 +490,7 @@
 					_solutionSquad[item] = new UTItemEntity();
 				});
 				console.log(_solutionSquad);
-				solution
+				JSON.parse(solution.results)
 					.sort((a, b) => b.Is_Pos - a.Is_Pos)
 					.forEach(function (item, index) {
 						let findMap = sbcData.formation.map(
@@ -551,10 +552,10 @@
 		};
 	};
 
-	const lockedLabel = 'Unlock';
-	const unlockedLabel = 'Lock';
-	const fixedLabel = 'Remove Must Use';
-	const unfixedLabel = 'Must Use';
+	const lockedLabel = 'SBC Unlock';
+	const unlockedLabel = 'SBC Lock';
+	const fixedLabel = 'SBC Remove Must Use';
+	const unfixedLabel = 'SBC Must Use';
 	const playerItemOverride = () => {
 		const UTDefaultSetItem = UTSlotActionPanelView.prototype.setItem;
 		UTSlotActionPanelView.prototype.setItem = function (e, t) {
@@ -564,84 +565,17 @@
 				e.concept ||
 				e.isLoaned() ||
 				!e.isPlayer() ||
-				e.isDuplicate() ||
 				!e.id
 			) {
 				return result;
 			}
-			const label = isItemLocked(e) ? lockedLabel : unlockedLabel;
-			const button = new UTGroupButtonControl();
-			button.init();
-			button.setInteractionState(true);
-			button.setText(label);
-			insertBefore(button, this._btnPlayerBio.__root);
-			button.addTarget(
-				this,
-				async () => {
-					if (isItemLocked(e)) {
-						unlockItem(e);
-						button.setText(unlockedLabel);
-						showNotification(`Item unlocked`, UINotificationType.POSITIVE);
-					} else {
-						lockItem(e);
-						button.setText(lockedLabel);
-						showNotification(`Item locked`, UINotificationType.POSITIVE);
-					}
-					getControllerInstance().applyDataChange();
-					getCurrentViewController()
-						.getCurrentController()
-						._rightController._currentController._renderView();
-				},
-				EventType.TAP
-			);
-
-			const fixLabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
-			const fixbutton = new UTGroupButtonControl();
-			fixbutton.init();
-			fixbutton.setInteractionState(true);
-			fixbutton.setText(fixLabel);
-			insertBefore(button, this._btnPlayerBio.__root);
-			fixbutton.addTarget(
-				this,
-				async () => {
-					if (isItemFixed(e)) {
-						unfixItem(e);
-						fixbutton.setText(unfixedLabel);
-						showNotification(`Removed Must Use`, UINotificationType.POSITIVE);
-					} else {
-						fixItem(e);
-						fixbutton.setText(fixedLabel);
-						showNotification(`Must Use Set`, UINotificationType.POSITIVE);
-					}
-					getControllerInstance().applyDataChange();
-					getCurrentViewController()
-						.getCurrentController()
-						._rightController._currentController._renderView();
-				},
-				EventType.TAP
-			);
-			return result;
-		};
-		const UTDefaultAction = UTDefaultActionPanelView.prototype.render;
-		UTDefaultActionPanelView.prototype.render = function (e, t, i, o, n, r, s) {
-			const result = UTDefaultAction.call(this, e, t, i, o, n, r, s);
-			// Concept player
-			if (
-				e.concept ||
-				e.isLoaned() ||
-				!e.isPlayer() ||
-				e.isDuplicate() ||
-				!e.id
-			) {
-				return result;
-			}
-			const label = isItemLocked(e) ? lockedLabel : unlockedLabel;
-			if (!this.lockUnlockButton) {
+			if (!e.isDuplicate() && !isItemFixed(e)) {
+				const label = isItemLocked(e) ? lockedLabel : unlockedLabel;
 				const button = new UTGroupButtonControl();
 				button.init();
 				button.setInteractionState(true);
 				button.setText(label);
-				insertBefore(button, this._playerBioButton.__root);
+				insertBefore(button, this._btnPlayerBio.__root);
 				button.addTarget(
 					this,
 					async () => {
@@ -654,40 +588,112 @@
 							button.setText(lockedLabel);
 							showNotification(`Item locked`, UINotificationType.POSITIVE);
 						}
+						getControllerInstance().applyDataChange();
 						getCurrentViewController()
 							.getCurrentController()
-							._leftController.refreshList();
+							._rightController._currentController._renderView();
 					},
 					EventType.TAP
 				);
-				this.lockUnlockButton = button;
 			}
-				const fixlabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
-			if (!this.fixUnfixButton) {
-				const button = new UTGroupButtonControl();
-				button.init();
-				button.setInteractionState(true);
-				button.setText(fixlabel);
-				insertBefore(button, this._playerBioButton.__root);
-				button.addTarget(
+			if (!isItemLocked(e)) {
+				const fixLabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
+				const fixbutton = new UTGroupButtonControl();
+				fixbutton.init();
+				fixbutton.setInteractionState(true);
+				fixbutton.setText(fixLabel);
+				insertBefore(fixbutton, this._btnPlayerBio.__root);
+				fixbutton.addTarget(
 					this,
 					async () => {
 						if (isItemFixed(e)) {
 							unfixItem(e);
-							button.setText(unfixedLabel);
+							fixbutton.setText(unfixedLabel);
 							showNotification(`Removed Must Use`, UINotificationType.POSITIVE);
 						} else {
 							fixItem(e);
-							button.setText(fixedLabel);
+							fixbutton.setText(fixedLabel);
 							showNotification(`Must Use Set`, UINotificationType.POSITIVE);
 						}
+						getControllerInstance().applyDataChange();
 						getCurrentViewController()
 							.getCurrentController()
-							._leftController.refreshList();
+							._rightController._currentController._renderView();
 					},
 					EventType.TAP
 				);
-				this.fixUnfixButton = button;
+			}
+			return result;
+		};
+		const UTDefaultAction = UTDefaultActionPanelView.prototype.render;
+		UTDefaultActionPanelView.prototype.render = function (e, t, i, o, n, r, s) {
+			const result = UTDefaultAction.call(this, e, t, i, o, n, r, s);
+			// Concept player
+			if (
+				e.concept ||
+				e.isLoaned() ||
+				!e.isPlayer() ||
+				!e.id
+			) {
+				return result;
+			}
+			if (!e.isDuplicate() && !isItemFixed(e)) {
+				const label = isItemLocked(e) ? lockedLabel : unlockedLabel;
+				if (!this.lockUnlockButton) {
+					const button = new UTGroupButtonControl();
+					button.init();
+					button.setInteractionState(true);
+					button.setText(label);
+					insertBefore(button, this._playerBioButton.__root);
+					button.addTarget(
+						this,
+						async () => {
+							if (isItemLocked(e)) {
+								unlockItem(e);
+								button.setText(unlockedLabel);
+								showNotification(`Item unlocked`, UINotificationType.POSITIVE);
+							} else {
+								lockItem(e);
+								button.setText(lockedLabel);
+								showNotification(`Item locked`, UINotificationType.POSITIVE);
+							}
+							getCurrentViewController()
+								.getCurrentController()
+								._leftController.refreshList();
+						},
+						EventType.TAP
+					);
+					this.lockUnlockButton = button;
+				}
+			}
+			if (!isItemLocked(e)) {
+			const fixlabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
+				if (!this.fixUnfixButton) {
+					const button = new UTGroupButtonControl();
+					button.init();
+					button.setInteractionState(true);
+					button.setText(fixlabel);
+					insertBefore(button, this._playerBioButton.__root);
+					button.addTarget(
+						this,
+						async () => {
+							if (isItemFixed(e)) {
+								unfixItem(e);
+								button.setText(unfixedLabel);
+								showNotification(`Removed Must Use`, UINotificationType.POSITIVE);
+							} else {
+								fixItem(e);
+								button.setText(fixedLabel);
+								showNotification(`Must Use Set`, UINotificationType.POSITIVE);
+							}
+							getCurrentViewController()
+								.getCurrentController()
+								._leftController.refreshList();
+						},
+						EventType.TAP
+					);
+					this.fixUnfixButton = button;
+				}
 			}
 			return result;
 		};
@@ -715,8 +721,7 @@
 			}
 			return result;
 		};
-	}; 
-
+	};
 
 	let priceCacheMinutes = 60;
 	let PRICE_ITEMS_KEY = 'futbinprices';
@@ -860,7 +865,6 @@
 		futHomeOverride();
 		sbcButtonOverride();
 		playerItemOverride();
-	
 	};
 	init();
 })();

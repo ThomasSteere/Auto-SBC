@@ -2,12 +2,14 @@
 import optimize
 import pandas as pd
 from fastapi import Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 # Preprocess the club dataset obtained from api.
 
 def preprocess_data(df: pd.DataFrame):
     df = df.explode('possiblePositions')
     df = df.explode('groups')  # Creating separate entries of a particular player for each alternate position.
-    # df.to_csv("allPlayers.csv")
+    df.to_csv("allPlayers.csv")
     df['Original_Idx'] = df.index
     df = df.reset_index(drop = True)
 
@@ -26,10 +28,9 @@ def runAutoSBC(sbc,players):
 
     df = preprocess_data(df)
     final_players,status,status_code = optimize.SBC(df,sbc)
-    print(status)
     results=[]
     # if status != 2 and status != 4:
-    #     return Response("{'status': {}, 'status_code': {}}".format(status, status_code), media_type="application/text")
+    #      return "{'status': {}, 'status_code': {}}".format(status, status_code)
     if final_players:
         df_out = df.iloc[final_players].copy()
         df_out.insert(5, 'Is_Pos', df_out.pop('Is_Pos'))
@@ -39,9 +40,12 @@ def runAutoSBC(sbc,players):
         print(f"Total Cost: {df_out['price'].sum()}")
         df_out['Org_Row_ID'] = df_out['Original_Idx'] + 2
         df_out.pop('Original_Idx')
-        print(sbc)
+        print(sbc, status, status_code)
         results = df_out.to_json(orient="records")
-    return Response(results, media_type="application/json")
+        json_compatible_item_data = jsonable_encoder({'results':results,'status':status,'status_code':status_code})
+        return JSONResponse(content=json_compatible_item_data)
+    json_compatible_item_data = jsonable_encoder({'status':status,'status_code':status_code})
+    return JSONResponse(content=json_compatible_item_data)
 
 
 def calc_squad_rating(rating):

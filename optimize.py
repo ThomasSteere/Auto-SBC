@@ -642,7 +642,7 @@ def fix_players(df, model, player,NUM_PLAYERS):
         players_to_fix = [player[j] for j in idxes]
         # Note: A selected player may play in multiple possiblePositionss.
         # Any one such version must be fixed.
-        model.Add(cp_model.LinearExpr.Sum(players_to_fix) == min(NUM_PLAYERS, len(dup_idxes)))
+        model.Add(cp_model.LinearExpr.Sum(players_to_fix) == min(NUM_PLAYERS, len(idxes)))
     if missing_players:
         print(
             f"**Couldn't fix the following players with Row_ID: {missing_players}**")
@@ -799,7 +799,7 @@ def SBC(df,sbc):
         df, model, chem, z_teamId, z_leagueId, z_nation, player, players_grouped, num_cnts, map_idx, b_c, b_l, b_n, sbc['formation'], CHEMISTRY,CHEM_PER_PLAYER, NUM_PLAYERS)
 
     '''Fix specific players and optimize the rest'''
-    model = fix_players(df, model, player, NUM_PLAYERS)
+    # model = fix_players(df, model, player, NUM_PLAYERS)
 
     '''Set objective based on player cost'''
     model = set_objective(df, model, player)
