@@ -460,7 +460,7 @@
 								getPrice(item) *
 									(duplicateIds.includes(item.id) ? 0.1 : 1) *
 									(item.untradeable ? 0.8 : 1) -
-								(100 - item.rating),
+								(100 - item.rating) * (isItemFixed(item) ? 0 : 1),
 						};
 					});
 
@@ -556,8 +556,8 @@
 
 	const lockedLabel = 'SBC Unlock';
 	const unlockedLabel = 'SBC Lock';
-	const fixedLabel = 'SBC Remove Must Use';
-	const unfixedLabel = 'SBC Must Use';
+	const fixedLabel = 'SBC Use actual prices';
+	const unfixedLabel = 'SBC Set Price to Zero';
 	const playerItemOverride = () => {
 		const UTDefaultSetItem = UTSlotActionPanelView.prototype.setItem;
 		UTSlotActionPanelView.prototype.setItem = function (e, t) {
@@ -696,11 +696,12 @@
 		UTPlayerItemView.prototype.renderItem = function (item, t) {
 			const result = UTPlayerItemView_renderItem.call(this, item, t);
 			if (getPrice(item)) {
+				let price = getPrice(item)  * (isItemFixed(item) ? 0 : 1)
 				this.__root.prepend(
 					createElem(
 						'div',
 						{ className: 'currency-coins item-price' },
-						getPrice(item).toLocaleString()
+						price.toLocaleString()
 					)
 				);
 			}
