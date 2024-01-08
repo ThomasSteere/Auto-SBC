@@ -8,8 +8,8 @@
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @grant        GM_xmlhttpRequest
-// @updateURL 	 https://github.com/ThomasSteere/AI-SBC/raw/main/tampermonkey-ai-sbc.user.js
-// @downloadURL  https://github.com/ThomasSteere/AI-SBC/raw/main/tampermonkey-ai-sbc.user.js
+// @updateURL 	 https://github.com/ThomasSteere/AI-SBC/blob/main/tampermonkey-ai-sbc.js
+// @downloadURL  https://github.com/ThomasSteere/AI-SBC/blob/main/tampermonkey-ai-sbc.js
 
 // ==/UserScript==
 
@@ -408,6 +408,8 @@
 		UTHomeHubView.prototype.init = async function () {
 			homeHubInit.call(this);
 			let players = await fetchPlayers();
+
+			await fetchLowestPriceByRating();
 			await fetchPlayerPrices(players);
 		};
 	};
@@ -458,7 +460,7 @@
 								getPrice(item) *
 									(duplicateIds.includes(item.id) ? 0.1 : 1) *
 									(item.untradeable ? 0.8 : 1) -
-								(100 - item.rating),
+								(100 - item.rating) * (isItemFixed(item) ? 0 : 1),
 						};
 					});
 
@@ -554,19 +556,14 @@
 
 	const lockedLabel = 'SBC Unlock';
 	const unlockedLabel = 'SBC Lock';
-	const fixedLabel = 'SBC Remove Must Use';
-	const unfixedLabel = 'SBC Must Use';
+	const fixedLabel = 'SBC Use actual prices';
+	const unfixedLabel = 'SBC Set Price to Zero';
 	const playerItemOverride = () => {
 		const UTDefaultSetItem = UTSlotActionPanelView.prototype.setItem;
 		UTSlotActionPanelView.prototype.setItem = function (e, t) {
 			const result = UTDefaultSetItem.call(this, e, t);
 			// Concept player
-			if (
-				e.concept ||
-				e.isLoaned() ||
-				!e.isPlayer() ||
-				!e.id
-			) {
+			if (e.concept || e.isLoaned() || !e.isPlayer() || !e.id) {
 				return result;
 			}
 			if (!e.isDuplicate() && !isItemFixed(e)) {
@@ -629,12 +626,7 @@
 		UTDefaultActionPanelView.prototype.render = function (e, t, i, o, n, r, s) {
 			const result = UTDefaultAction.call(this, e, t, i, o, n, r, s);
 			// Concept player
-			if (
-				e.concept ||
-				e.isLoaned() ||
-				!e.isPlayer() ||
-				!e.id
-			) {
+			if (e.concept || e.isLoaned() || !e.isPlayer() || !e.id) {
 				return result;
 			}
 			if (!e.isDuplicate() && !isItemFixed(e)) {
@@ -667,7 +659,7 @@
 				}
 			}
 			if (!isItemLocked(e)) {
-			const fixlabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
+				const fixlabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
 				if (!this.fixUnfixButton) {
 					const button = new UTGroupButtonControl();
 					button.init();
@@ -680,7 +672,10 @@
 							if (isItemFixed(e)) {
 								unfixItem(e);
 								button.setText(unfixedLabel);
-								showNotification(`Removed Must Use`, UINotificationType.POSITIVE);
+								showNotification(
+									`Removed Must Use`,
+									UINotificationType.POSITIVE
+								);
 							} else {
 								fixItem(e);
 								button.setText(fixedLabel);
@@ -701,11 +696,12 @@
 		UTPlayerItemView.prototype.renderItem = function (item, t) {
 			const result = UTPlayerItemView_renderItem.call(this, item, t);
 			if (getPrice(item)) {
+				let price = getPrice(item)  * (isItemFixed(item) ? 0 : 1)
 				this.__root.prepend(
 					createElem(
 						'div',
 						{ className: 'currency-coins item-price' },
-						getPrice(item).toLocaleString()
+						price.toLocaleString()
 					)
 				);
 			}
@@ -729,11 +725,13 @@
 
 	let getPrice = function (item) {
 		let PriceItems = getPriceItems();
-
+		let expiryTimeStamp = new Date(
+			PriceItems[item.definitionId]?.expiryTimeStamp
+		);
 		if (
 			PriceItems[item.definitionId] &&
 			PriceItems[item.definitionId]?.expiryTimeStamp &&
-			new Date(PriceItems[item.definitionId]?.expiryTimeStamp) < Date.now()
+			expiryTimeStamp < Date.now()
 		) {
 			return null;
 		}
@@ -749,16 +747,6 @@
 		savePriceItems();
 	};
 
-	const dateTimeReviver = function (key, value) {
-		var a;
-		if (typeof value === 'string') {
-			a = /\/Date\((\d*)\)\//.exec(value);
-			if (a) {
-				return new Date(+a[1]);
-			}
-		}
-		return value;
-	};
 	let getPriceItems = function () {
 		if (cachedPriceItems) {
 			return cachedPriceItems;
@@ -766,7 +754,7 @@
 		cachedPriceItems = {};
 		let PriceItems = localStorage.getItem(PRICE_ITEMS_KEY);
 		if (PriceItems) {
-			cachedPriceItems = JSON.parse(PriceItems, dateTimeReviver);
+			cachedPriceItems = JSON.parse(PriceItems);
 		}
 
 		return cachedPriceItems;
@@ -823,6 +811,37 @@
 				});
 		});
 	}
+	const convertAbbreviatedNumber = (number) => {
+		let base = parseFloat(number);
+		if (number.toLowerCase().match(/k/)) {
+			return Math.round(base * 1000);
+		} else if (number.toLowerCase().match(/m/)) {
+			return Math.round(base * 1000000);
+		}
+		return number * 1;
+	};
+	const fetchLowestPriceByRating = async () => {
+		const futBinCheapestByRatingResponse = await makeGetRequest(
+			`https://www.futbin.com/home-tab/cheapest-by-rating`
+		);
+		$(futBinCheapestByRatingResponse)
+			.find('#cheapest-players-row')
+			.find('.col-9')
+			.each(function (i, obj) {
+				PriceItem(
+					{
+						definitionId:
+							obj.innerText.replace('Rated players', '').trim() + '_CBR',
+					},
+					convertAbbreviatedNumber(
+						$(futBinCheapestByRatingResponse)
+							.find('#cheapest-players-row')
+							.find('.d-none')
+							[i * 5].innerText.trim()
+					)
+				);
+			});
+	};
 	const fetchPlayerPrices = async (players) => {
 		const idsArray = players
 			.filter((f) => getPrice(f) == null)
@@ -843,11 +862,31 @@
 
 			for (const id of [primaryId, ...playersIdArray]) {
 				const prices = priceResponse[id].prices[getUserPlatform()];
+
 				const lcPrice = prices.LCPrice;
 				if (!lcPrice) {
 					continue;
 				}
-				const cardPrice = parseInt(lcPrice.replace(/[,.]/g, ''));
+				let cardPrice = parseInt(lcPrice.replace(/[,.]/g, ''));
+				if (cardPrice == 0) {
+					let player = players.filter((f) => f.definitionId == id)[0];
+
+					if (!prices.updated) {
+						await fetchPlayerPrices(
+							players.filter((f) => f.definitionId == id)
+						);
+						continue;
+					}
+					cardPrice = player._itemPriceLimits.maximum;
+					if (prices.updated == 'Never') {
+						//never indicates its not on the market so give it the lowest price of the rating with a premium
+						let newPrice = getPrice({ definitionId: player._rating + '_CBR' });
+						cardPrice = Math.min(
+							Math.max(newPrice * 1.5, player._itemPriceLimits.minimum),
+							player._itemPriceLimits.maximum
+						);
+					}
+				}
 				PriceItem(players.filter((f) => f.definitionId == id)[0], cardPrice);
 			}
 		}

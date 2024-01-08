@@ -43,8 +43,8 @@ class ObjectiveEarlyStopping(cp_model.CpSolverSolutionCallback):
 @runtime
 def create_var(model, df, map_idx, num_cnts):
     '''Create the relevant variables'''
-    num_players, num_teamIds, num_leagueId, num_nationId = num_cnts[
-        0], num_cnts[1], num_cnts[2], num_cnts[3]
+    num_players, num_teamIds, num_leagueId, num_nationId, num_ratingTier = num_cnts[
+        0], num_cnts[1], num_cnts[2], num_cnts[3], num_cnts[4]
 
     player = []  # player[i] = 1 => i^th player is considered and 0 otherwise
     chem = []  # chem[i] = chemistry of i^th player
@@ -195,6 +195,22 @@ def create_rarity_constraint(df, model, player, map_idx, players_grouped, num_cn
     
     return model
 
+
+@runtime
+def create_player_level_constraint(df, model, player, map_idx, players_grouped, num_cnts, NUM_LEVEL, LEVELS):
+    '''Create rarity constraint (>=)'''
+
+    for i, groupId_list in enumerate(LEVELS):
+        expr = []
+        for groupId in groupId_list:
+            try:
+                expr += players_grouped["ratingTier"].get(
+                    map_idx["ratingTier"][groupId], [])
+            except Exception as error:
+                print("An exception occurred:", error)
+        model.Add(cp_model.LinearExpr.Sum(expr) >= NUM_LEVEL[i])
+
+    return model
 
 # @runtime
 # def create_rarity_1_constraint(df, model, player, map_idx, players_grouped, num_cnts):
@@ -687,7 +703,7 @@ def SBC(df,sbc):
 
     '''Optimize SBC using Constraint Integer Programming'''
     num_cnts = [df.shape[0], df.teamId.nunique(), df.leagueId.nunique(
-    ), df.nationId.nunique()]  # Count of important fields
+    ), df.nationId.nunique(), df.ratingTier.nunique()]  # Count of important fields
     map_idx = {}  # Map fields to a unique index
     fields = ["teamId", "leagueId", "nationId", "possiblePositions",
               "rating", "ratingTier", "groups","rarityId", "name", "isFixed"]
@@ -763,36 +779,9 @@ def SBC(df,sbc):
         if req['requirementKey'] == 'TEAM_RATING':  
             model = create_squad_rating_constraint_3(
                 df, model, player, map_idx, players_grouped, num_cnts, NUM_PLAYERS, req['eligibilityValues'][0])
-
-    '''teamId'''
-    # model = create_teamId_constraint(df, model, player, map_idx, players_grouped, num_cnts)
-    # model = create_max_teamId_constraint(df, model, player, map_idx, players_grouped, num_cnts)
-    # model = create_min_teamId_constraint(df, model, player, map_idx, players_grouped, num_cnts)
-    # model = create_unique_teamId_constraint(df, model, player, teamId, map_idx, players_grouped, num_cnts)
-    '''teamId'''
-
-  
-
-    '''rarityId'''
-    # model = create_rarity_1_constraint(df, model, player, map_idx, players_grouped, num_cnts)
-    
-    '''rarityId'''
-
-    '''Squad rating'''
-    # model = create_squad_rating_constraint_1(df, model, player, map_idx, players_grouped, num_cnts)
-    # model = create_squad_rating_constraint_2(df, model, player, map_idx, players_grouped, num_cnts)
-  
-    # model = create_squad_rating_constraint_3(df, model, player, map_idx, players_grouped, num_cnts)
-    '''Squad rating'''
-
-    '''Min Overall'''
-    # model = create_min_overall_constraint(df, model, player, map_idx, players_grouped, num_cnts)
-    '''Min Overall'''
-
-    '''Duplicates'''
-    # model = prioritize_duplicates(df, model, player)
-
-    '''Comment out the constraints not required'''
+                
+        if req['requirementKey'] == 'PLAYER_LEVEL':
+            model = create_player_level_constraint(df, model, player, map_idx, players_grouped, num_cnts, [req['count']], [req['eligibilityValues']])
 
     '''If there is no constraint on total chemistry, simply set CHEMISTRY = 0'''
     model, pos, chem_expr = create_chemistry_constraint(
