@@ -1,15 +1,14 @@
 // ==UserScript==
 // @name         FIFA AI SBC
 // @namespace    http://tampermonkey.net/
-// @version      1
-// @description  try to take over the world!
+// @version      1.1
+// @description  automatically solve EAFC 24 SBCs using the currently available players in the club with the minimum cost
 // @author       TitiroMonkey
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @grant        GM_xmlhttpRequest
-// @updateURL 	 https://github.com/ThomasSteere/AI-SBC/blob/main/tampermonkey-ai-sbc.js
-// @downloadURL  https://github.com/ThomasSteere/AI-SBC/blob/main/tampermonkey-ai-sbc.js
+// @connect 	 www.futbin.com
 
 // ==/UserScript==
 
@@ -473,6 +472,7 @@
 				});
 				console.log('Sending SBC to Solve...');
 				let solution = await makePostRequest(ApiUrl, input);
+				console.log(solution);
 				if (solution.status_code != 2 && solution.status_code != 4) {
 					hideLoader();
 					showNotification(solution.status, UINotificationType.NEGATIVE);
@@ -696,7 +696,7 @@
 		UTPlayerItemView.prototype.renderItem = function (item, t) {
 			const result = UTPlayerItemView_renderItem.call(this, item, t);
 			if (getPrice(item)) {
-				let price = getPrice(item)  * (isItemFixed(item) ? 0 : 1)
+				let price = getPrice(item) * (isItemFixed(item) ? 0 : 1);
 				this.__root.prepend(
 					createElem(
 						'div',
@@ -807,6 +807,10 @@
 				})
 				.catch((error) => {
 					console.log(error);
+					showNotification(
+						`Please check backend API is running`,
+						UINotificationType.NEGATIVE
+					);
 					hideLoader();
 				});
 		});
@@ -889,6 +893,7 @@
 				}
 				PriceItem(players.filter((f) => f.definitionId == id)[0], cardPrice);
 			}
+			await wait();
 		}
 	};
 

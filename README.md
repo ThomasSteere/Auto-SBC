@@ -7,11 +7,14 @@ The project utilizes [tamper monkey script](https://www.tampermonkey.net/) to ou
 Install the tampermonkey extension and then install [the frontend script](https://github.com/ThomasSteere/AI-SBC/raw/main/tampermonkey-ai-sbc.user.js)
 
 This script implements a number of backend functions but the main feature is a Solve SBC button on each SBC that send players to the backend solver
+
 ![solveBtn](https://github.com/ThomasSteere/AI-SBC/blob/main/pictures/solveBtn.jpg?raw=true)
 
 Players will also get SBC Lock button to not send use this player in the solution (if its a duplicate it will get sent)
-Also a must use button is available which will set the cost of this player to 0 so it will get most likely get used if it can be fit into the SBC.
-This is useful to get rid of high rated duplicates.
+
+Also a set the cost of this player to 0 button so it will get most likely get used if it can be fit into the SBC.
+This is useful to get rid of high rated duplicates or overpriced SBCS.
+
 ![solveBtn](https://github.com/ThomasSteere/AI-SBC/blob/main/pictures/Player.jpg?raw=true)
 
 Current base price is based off of Futbin prices cached for 60 minutes

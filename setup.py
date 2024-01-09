@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 # Preprocess the club dataset obtained from api.
 
 def preprocess_data(df: pd.DataFrame):
+    df['price']= df['price'].fillna(15000000) #set price to 15m if missing so it will only use the player if really necessary
     df = df.explode('possiblePositions')
     df = df.explode('groups')  # Creating separate entries of a particular player for each alternate position.
     df.to_csv("allPlayers.csv")
