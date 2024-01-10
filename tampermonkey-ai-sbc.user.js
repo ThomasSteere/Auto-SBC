@@ -941,7 +941,7 @@
 	};
 	const appendSquadTotal = (total) => {
 		if ($('.squadTotal').length) {
-			$('.squadTotal').text(total);
+			$('.squadTotal').text(total.toLocaleString());
 		} else {
 			$(
 				`<div class="rating chemistry-inline">
