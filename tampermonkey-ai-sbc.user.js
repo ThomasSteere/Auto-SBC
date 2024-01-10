@@ -897,6 +897,72 @@
 		}
 	};
 
+	const playerSlotOverride = () => {
+		const playerSlot = UTSquadPitchView.prototype.setSlots;
+
+		UTSquadPitchView.prototype.setSlots = async function (...args) {
+			const result = playerSlot.call(this, ...args);
+			const slots = this.getSlotViews();
+			const squadSlots = [];
+			slots.forEach((slot, index) => {
+				const item = args[0][index];
+				squadSlots.push({
+					item: item._item,
+					rootElement: slot.getRootElement(),
+				});
+			});
+
+			appendSlotPrice(squadSlots);
+			return result;
+		};
+	};
+
+	const appendSlotPrice = async (squadSlots) => {
+		if (!squadSlots.length) {
+			return;
+		}
+		const players = [];
+		for (const { item } of squadSlots) {
+			players.push(item);
+		}
+
+		const prices = await fetchPlayerPrices(players);
+		let total = 0;
+		for (const { rootElement, item } of squadSlots) {
+			const cardPrice = getPrice(item);
+			total += cardPrice || 0;
+
+			if (cardPrice) {
+				const element = $(rootElement);
+				appendPriceToSlot(element, cardPrice);
+			}
+		}
+		appendSquadTotal(total);
+	};
+	const appendSquadTotal = (total) => {
+		if ($('.squadTotal').length) {
+			$('.squadTotal').text(total);
+		} else {
+			$(
+				`<div class="rating chemistry-inline">
+          <span class="ut-squad-summary-label">Squad Price</span>
+          <div>
+            <span class="ratingValue squadTotal currency-coins">${total.toLocaleString()}</span>
+          </div>
+        </div>
+        `
+			).insertAfter($('.chemistry'));
+		}
+	};
+	const appendPriceToSlot = (rootElement, price) => {
+		rootElement.prepend(
+			createElem(
+				'div',
+				{ className: 'currency-coins item-price' },
+				price.toLocaleString()
+			)
+		);
+	};
 	const getUserPlatform = () => {
 		if (services.User.getUser().getSelectedPersona().isPC) {
 			return 'pc';
@@ -909,6 +975,7 @@
 		futHomeOverride();
 		sbcButtonOverride();
 		playerItemOverride();
+		playerSlotOverride();
 	};
 	init();
 })();
