@@ -861,9 +861,14 @@
 			const futBinResponse = await makeGetRequest(
 				`https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`
 			);
-
-			const priceResponse = JSON.parse(futBinResponse);
-
+			try {
+				const priceResponse = JSON.parse(futBinResponse);
+			} catch (error) {
+				console.log(futBinResponse);
+				console.error(error);
+				await wait()
+				continue;
+			}
 			for (const id of [primaryId, ...playersIdArray]) {
 				const prices = priceResponse[id].prices[getUserPlatform()];
 
