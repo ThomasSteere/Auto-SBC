@@ -706,7 +706,7 @@ def SBC(df,sbc):
     ), df.nationId.nunique(), df.ratingTier.nunique()]  # Count of important fields
     map_idx = {}  # Map fields to a unique index
     fields = ["teamId", "leagueId", "nationId", "possiblePositions",
-              "rating", "ratingTier", "groups","rarityId", "name", "isFixed"]
+              "rating", "ratingTier", "groups","rarityId", "name"]
     for field in fields:
         map_idx[field] = get_dict(df, field)
     print('2')
