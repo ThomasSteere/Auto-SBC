@@ -60,14 +60,17 @@ def create_var(model, df, map_idx, num_cnts, sbc):
     for i in range(num_players):
         boolVar=model.NewBoolVar(f"player{i}")
         player.append(boolVar)
-        if df.at[i, "assetId"] in sbc['currentSolution']:
-            solutionPosition=sbc['formation'][sbc['currentSolution'].index(df.at[i, "assetId"])]
-            key_names = ["assetId", "possiblePositions"]
-            keys = [df.at[i, "assetId"], solutionPosition]
-            
-            if (df.at[i, "possiblePositions"] == solutionPosition or df[(df[key_names] == keys).all(1)]['name'].count()==0 ) and df.at[i, "assetId"] not in playerHints:
-                playerHints.append(df.at[i, "assetId"])
-                model.AddHint(boolVar,1)
+        if sum(1 for _ in filter(None.__ne__, sbc['currentSolution']))>0:
+            if df.at[i, "assetId"] in sbc['currentSolution']:
+                solutionPosition=sbc['formation'][sbc['currentSolution'].index(df.at[i, "assetId"])]
+                key_names = ["assetId", "possiblePositions"]
+                keys = [df.at[i, "assetId"], solutionPosition]
+                
+                if (df.at[i, "possiblePositions"] == solutionPosition or df[(df[key_names] == keys).all(1)]['name'].count()==0 ) and df.at[i, "assetId"] not in playerHints:
+                    playerHints.append(df.at[i, "assetId"])
+                    model.AddHint(boolVar,1)
+            else:
+                model.AddHint(boolVar,0)
         chem.append(model.NewIntVar(0, 3, f"chem{i}"))
         players_grouped["teamId"][map_idx["teamId"][df.at[i, "teamId"]]] = players_grouped["teamId"].get(
             map_idx["teamId"][df.at[i, "teamId"]], []) + [player[i]]
