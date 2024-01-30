@@ -54,4 +54,4 @@ def calc_squad_rating(rating):
     rat_sum = sum(rating)
     avg_rat = rat_sum / 11
     excess = sum(max(rat - avg_rat, 0) for rat in rating)
-    return round(rat_sum + excess) 
+    return round(avg_rat + excess)

@@ -41,7 +41,7 @@ class ObjectiveEarlyStopping(cp_model.CpSolverSolutionCallback):
 
 
 @runtime
-def create_var(model, df, map_idx, num_cnts):
+def create_var(model, df, map_idx, num_cnts, sbc):
     '''Create the relevant variables'''
     num_players, num_teamIds, num_leagueId, num_nationId, num_ratingTier = num_cnts[
         0], num_cnts[1], num_cnts[2], num_cnts[3], num_cnts[4]
@@ -55,8 +55,19 @@ def create_var(model, df, map_idx, num_cnts):
         "teamId": {}, "leagueId": {}, "nationId": {}, "possiblePositions": {},
         "rating": {}, "ratingTier": {}, "groups": {}, "rarityId": {},"name": {}
     }
+    #Try adding hints to solver to enable rerun of solver multiple times and start where you left off
+    playerHints = []
     for i in range(num_players):
-        player.append(model.NewBoolVar(f"player{i}"))
+        boolVar=model.NewBoolVar(f"player{i}")
+        player.append(boolVar)
+        if df.at[i, "assetId"] in sbc['currentSolution']:
+            solutionPosition=sbc['formation'][sbc['currentSolution'].index(df.at[i, "assetId"])]
+            key_names = ["assetId", "possiblePositions"]
+            keys = [df.at[i, "assetId"], solutionPosition]
+            
+            if (df.at[i, "possiblePositions"] == solutionPosition or df[(df[key_names] == keys).all(1)]['name'].count()==0 ) and df.at[i, "assetId"] not in playerHints:
+                playerHints.append(df.at[i, "assetId"])
+                model.AddHint(boolVar,1)
         chem.append(model.NewIntVar(0, 3, f"chem{i}"))
         players_grouped["teamId"][map_idx["teamId"][df.at[i, "teamId"]]] = players_grouped["teamId"].get(
             map_idx["teamId"][df.at[i, "teamId"]], []) + [player[i]]
@@ -76,7 +87,6 @@ def create_var(model, df, map_idx, num_cnts):
             map_idx["rarityId"][df.at[i, "rarityId"]], []) + [player[i]]
         players_grouped["name"][map_idx["name"][df.at[i, "name"]]] = players_grouped["name"].get(
             map_idx["name"][df.at[i, "name"]], []) + [player[i]]
-
     # These variables are basically chemistry of each teamId, leagueId and nation
     z_teamId = [model.NewIntVar(0, 3, f"z_teamId{i}") for i in range(num_teamIds)]
     z_leagueId = [model.NewIntVar(
@@ -127,7 +137,6 @@ def create_basic_constraints(df, model, player, map_idx, players_grouped, num_cn
 @runtime
 def create_nationId_constraint(df, model, player, map_idx, players_grouped, num_cnts,NUM_nationId, NATIONS):
     '''Create nationId constraint (>=)'''
-    print(players_grouped)
     for i, nation_list in enumerate(NATIONS):
         expr = []
         for nation in nation_list:
@@ -624,47 +633,6 @@ def create_unique_nationId_constraint(df, model, player, nationId, map_idx, play
         print("**Couldn't create unique_nationId_constraint!**")
     return model
 
-
-@runtime
-def prioritize_duplicates(df, model, player,NUM_PLAYERS):
-    dup_idxes = list(df[(df["IsDuplicate"] == True)].index)
-    if not dup_idxes:
-        print("**No Duplicates Found!**")
-        return model
-    duplicates = [player[j] for j in dup_idxes]
-    dup_expr = cp_model.LinearExpr.Sum(duplicates)
-    if input.USE_ALL_DUPLICATES:
-        model.Add(dup_expr == min(NUM_PLAYERS, len(dup_idxes)))
-    elif input.USE_AT_LEAST_HALF_DUPLICATES:
-        model.Add(2 * dup_expr >= min(NUM_PLAYERS, len(dup_idxes)))
-    elif input.USE_AT_LEAST_ONE_DUPLICATE:
-        model.Add(dup_expr >= 1)
-    return model
-
-
-@runtime
-def fix_players(df, model, player,NUM_PLAYERS):
-    '''Fix specific players and optimize the rest'''
-    FIX_PLAYERS = list(df[(df["isFixed"] == True)].index)
-    if not FIX_PLAYERS:
-        return model
-    
-    missing_players = []
-    for idx in FIX_PLAYERS:
-        idxes = list(df[(df["isFixed"] == True)].index)
-        if not idxes:
-            missing_players.append(idx)
-            continue
-        players_to_fix = [player[j] for j in idxes]
-        # Note: A selected player may play in multiple possiblePositionss.
-        # Any one such version must be fixed.
-        model.Add(cp_model.LinearExpr.Sum(players_to_fix) == min(NUM_PLAYERS, len(idxes)))
-    if missing_players:
-        print(
-            f"**Couldn't fix the following players with Row_ID: {missing_players}**")
-        print(f"**They may have already been filtered out**")
-    return model
-
 MINIMIZE_MAX_COST=False
 MAXIMIZE_TOTAL_COST=False
 @runtime
@@ -706,17 +674,16 @@ def SBC(df,sbc):
     ), df.nationId.nunique(), df.ratingTier.nunique()]  # Count of important fields
     map_idx = {}  # Map fields to a unique index
     fields = ["teamId", "leagueId", "nationId", "possiblePositions",
-              "rating", "ratingTier", "groups","rarityId", "name"]
+              "rating", "ratingTier", "groups","rarityId", "name", ]
     for field in fields:
         map_idx[field] = get_dict(df, field)
-    print('2')
     '''Create the CP-SAT Model'''
     model = cp_model.CpModel()
 
     '''Create essential variables and do some pre-processing'''
    
     model, player, chem, z_teamId, z_leagueId, z_nation, b_c, b_l, b_n, teamId, nationId, leagueId, players_grouped = create_var(
-        model, df, map_idx, num_cnts)
+        model, df, map_idx, num_cnts, sbc)
     
     '''Essential constraints'''
     NUM_PLAYERS = 11-len(sbc['brickIndices'])
