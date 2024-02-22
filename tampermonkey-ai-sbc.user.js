@@ -225,7 +225,7 @@
 						gatheredPlayers.push(...response.response.items);
 						if (response.status !== 400 && !response.response.endOfList) {
 							searchCriteria.offset += searchCriteria.count;
-							console.log(searchCriteria.offset);
+							
 
 							getAllConceptPlayers();
 						} else {
@@ -283,7 +283,7 @@
 		});
 	};
 
-	let ApiUrl = 'http://127.0.0.1:8000/solve';
+	let apiUrl = 'http://127.0.0.1:8000/solve';
 
 	let LOCKED_ITEMS_KEY = 'lockeditems';
 	let cachedLockedItems;
@@ -474,7 +474,7 @@
 		let sbcSet = sbcData.sets.filter((e) => e.id == sbcId)[0];
 		let challenges = await sbcChallenges(sbcSet);
 		if (challengeId == 0) {
-			console.log(challenges);
+			
 			//Get last/hardest SBC if no challenge given
 			let uncompletedChallenges = challenges?.challenges.filter(
 				(f) => f.status != 'COMPLETED'
@@ -533,7 +533,7 @@
 	const duplicateDiscount = 0.1;
 	const untradeableDiscount = 0.8;
 	const conceptPremium = 10;
-	const solveSBC = async (sbcData) => {
+	const solveSBC = async (sbcData,autoSubmit = false) => {
 		showLoader();
 		let players = await fetchPlayers();
 
@@ -555,8 +555,8 @@
 		let backendPlayersInput = players
 			.filter(
 				(item) =>
-					item.loans < 0 &&
-					(!isItemLocked(item) || duplicateIds.includes(item.id))
+					item.loans < 0 && //item.rating<82 &&
+					(!isItemLocked(item) || duplicateIds.includes(item.id) )
 			)
 			.map((item) => {
 				if (!item.groups.length) {
@@ -603,8 +603,8 @@
 			sbcData: sbcData,
 		});
 		console.log('Sending SBC to Solve...');
-		let solution = await makePostRequest(ApiUrl, input);
-		console.log(solution);
+		let solution = await makePostRequest(apiUrl, input);
+		console.log(JSON.parse(solution.results));
 		if (solution.status_code != 2 && solution.status_code != 4) {
 			hideLoader();
 			showNotification(solution.status, UINotificationType.NEGATIVE);
@@ -619,13 +619,21 @@
 		let allSbcData = await sbcSets();
 		let sbcSet = allSbcData.sets.filter((e) => e.id == sbcData.setId)[0];
 		let challenges = await sbcChallenges(sbcSet);
+        let sbcChallenge = challenges.challenges.filter((i) => i.id == sbcData.challengeId)[0]
 		await loadChallenge(
-			challenges.challenges.filter((i) => i.id == sbcData.challengeId)[0]
+			sbcChallenge
 		);
+
+        console.log(sbcChallenge)
+        window.sbcSet=sbcSet
+        window.challengeId=sbcData.challengeId
+
 		let newSbcSquad = new UTSBCSquadOverviewViewController();
 		newSbcSquad.initWithSBCSet(sbcSet, sbcData.challengeId);
 		let { _squad, _challenge } = newSbcSquad;
-		_squad.removeAllItems();
+
+        console.log(_challenge)
+		_squad.removeAllItems()
 
 		let _solutionSquad = [...Array(11)];
 		sbcData.brickIndices.forEach(function (item, index) {
@@ -666,26 +674,52 @@
 					}
 					return;
 				}
-				await loadChallenge(_challenge);
+				
 			}
 		);
-		if (solution.status_code == 4) {
+        await loadChallenge(_challenge);
+		if (solution.status_code == 4 && autoSubmit) {
 			console.log(_challenge, sbcSet);
-			services.SBC.submitChallenge(_challenge, _challenge.setId, true).observe(
+		 await	sbcSubmit(_challenge, sbcSet);
+		}
+        else{
+        let showSBC = new UTSBCSquadSplitViewController
+        showSBC.initWithSBCSet(sbcSet, sbcData.challengeId)
+        getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().pushViewController(showSBC);
+        }
+        repositories.Item.unassigned.clear();
+		repositories.Item.unassigned.reset();
+        createSBCTab();
+		hideLoader();
+
+	};
+
+    const sbcSubmit = async function (challenge,sbcSet) {
+		return new Promise((resolve, reject) => {
+			// Search in the club
+			services.SBC.submitChallenge(challenge, sbcSet, true,services.Chemistry.isFeatureEnabled()).observe(
 				this,
 				async function (obs, res) {
 					if (!res.success) {
 						obs.unobserve(this);
-						console.log(res);
+                        showNotification(
+							'Failed to submit',
+							UINotificationType.NEGATIVE
+						);
+						reject(res);
+
 					} else {
-						console.log(res);
+                        showNotification(
+							'SBC Submitted',
+							UINotificationType.POSITIVE
+						);
+						resolve(res);
 					}
 				}
 			);
-		}
-
-		hideLoader();
+		});
 	};
+
 	const sbcViewOverride = () => {
 		const squadDetailPanelView = UTSBCSquadDetailPanelView.prototype.init;
 		UTSBCSquadDetailPanelView.prototype.init = function (...args) {
@@ -852,9 +886,12 @@
 			return result;
 		};
 		const UTPlayerItemView_renderItem = UTPlayerItemView.prototype.renderItem;
-		UTPlayerItemView.prototype.renderItem = function (item, t) {
+		UTPlayerItemView.prototype.renderItem = async function (item, t) {
 			const result = UTPlayerItemView_renderItem.call(this, item, t);
-			if (getPrice(item)) {
+            let settings = getSolverSettings()
+            const duplicateIds = await fetchDuplicateIds()
+            if (duplicateIds.includes(item.id)){this.__root.style.opacity = "0.4";}
+			if (getPrice(item) && settings['showPrices']) {
 				let price = getPrice(item) * (isItemFixed(item) ? 0 : 1);
 				this.__root.prepend(
 					createElem(
@@ -989,7 +1026,13 @@
 		const futBinCheapestByRatingResponse = await makeGetRequest(
 			`https://www.futbin.com/home-tab/cheapest-by-rating`
 		);
-		$(futBinCheapestByRatingResponse)
+        const doc = new DOMParser().parseFromString(futBinCheapestByRatingResponse, 'text/html');
+        doc.querySelectorAll('img').forEach((img) => {
+            img.remove()
+
+});
+console.log(doc.body.innerHTML);
+		$(doc.body.innerHTML)
 			.find('#cheapest-players-row')
 			.find('.col-9')
 			.each(function (i, obj) {
@@ -1011,7 +1054,11 @@
 		const idsArray = players
 			.filter((f) => getPrice(f) == null)
 			.map((p) => p.definitionId);
-
+        if(idsArray.length>1){
+            showNotification(
+            `Fetching ${idsArray.length} Prices`,
+            UINotificationType.NEUTRAL
+        );}
 		while (idsArray.length) {
 			const playersIdArray = idsArray.splice(0, 30);
 			const primaryId = playersIdArray.shift();
@@ -1042,7 +1089,7 @@
 				let cardPrice = parseInt(lcPrice.replace(/[,.]/g, ''));
 				let player = players.filter((f) => f.definitionId == id)[0];
 				if (cardPrice == 0) {
-					console.log(prices, player);
+					//console.log(prices, player);
 
 					if (!prices.updated) {
 						await fetchPlayerPrices(
@@ -1056,15 +1103,19 @@
 					const minPrice =
 						player._itemPriceLimits?.minimum ||
 						parseInt(prices.MinPrice.replace(/[,.]/g, ''));
-					const cbrPrice = getPrice({ definitionId: player._rating + '_CBR' });
+					const cbrPrice = getPrice({ definitionId: player.rating + '_CBR' });
+
 					cardPrice = maxPrice;
 
 					if (prices.updated == 'Never' || prices.updated.includes('week')) {
 						//never indicates its not on the market so give it the lowest price of the rating with a premium
-						cardPrice = player.isSpecial()
-							? Math.min(Math.max(cbrPrice * 1.5, minPrice), maxPrice)
+						cardPrice = player.isSpecial() && player.rating > 74
+							? cbrPrice * 1.5
 							: minPrice;
+
+
 					}
+
 				}
 				if (player.concept) {
 					PriceItem(
@@ -1123,7 +1174,9 @@
 
 		const prices = await fetchPlayerPrices(players);
 		let total = 0;
+        const duplicateIds = await fetchDuplicateIds()
 		for (const { rootElement, item } of squadSlots) {
+           // if (duplicateIds.includes(item.id)){rootElement.style.opacity = "0.4";}
 			const cardPrice = getPrice(item);
 			total += cardPrice || 0;
 
@@ -1135,6 +1188,8 @@
 		appendSquadTotal(total);
 	};
 	const appendSquadTotal = (total) => {
+        let settings = getSolverSettings()
+        if(settings['showPrices']){
 		if ($('.squadTotal').length) {
 			$('.squadTotal').text(total.toLocaleString());
 		} else {
@@ -1148,8 +1203,11 @@
         `
 			).insertAfter($('.chemistry'));
 		}
+        }
 	};
 	const appendPriceToSlot = (rootElement, price) => {
+            let settings = getSolverSettings()
+        if(settings['showPrices']){
 		rootElement.prepend(
 			createElem(
 				'div',
@@ -1157,6 +1215,7 @@
 				price.toLocaleString()
 			)
 		);
+        }
 	};
 	const getUserPlatform = () => {
 		if (services.User.getUser().getSelectedPersona().isPC) {
@@ -1184,18 +1243,18 @@
 		$('.sbc-auto').remove();
 		if ($('.ut-tab-bar-view').find('.sbc-auto').length === 0) {
 			let NewTab =
-				'<nav class="ut-tab-bar sbc-auto"/><button class="ut-tab-bar-item"><span>SBC 1-click Favourites</span></button>';
+				'<nav class="ut-tab-bar sbc-auto"/><button  class="ut-tab-bar-item"><span>SBC 1-click Favourites</span></button><div id="sbcBtns" style="overflow:auto;top:64px;" ></div>';
 			$('.ut-tab-bar-view').prepend(NewTab);
 		}
 		favouriteSBCSets.forEach(function (e) {
 			var t = new UTSBCSetTileView();
 			t.init(), (t.title = e.name), t.setData(e), t.render();
-			$('.sbc-auto').append(
+			$('#sbcBtns').append(
 				"<button class='ut-tab-bar-item' id=" +
 					e.id +
 					'><img src=' +
 					t._setImage.src +
-					" alt='sbc img' width='50' height='50'/><span>" +
+					" alt='sbc img' width='45' height='45'/><span>" +
 					e.name +
 					'</span></button>'
 			);
@@ -1205,7 +1264,7 @@
 					UINotificationType.POSITIVE,
 				]);
 				let sbcSolveData = await fetchSBCData(e.id, 0);
-				solveSBC(sbcSolveData);
+				solveSBC(sbcSolveData,true);
 			});
 		});
 	};
@@ -1224,8 +1283,35 @@
 
 	let eventMappers = new Set();
 
-	const clickHandler = (key, evt) => {
-		const sbcSolverSetting = getValue('sbcSolverSettings') || {};
+    let SOLVER_SETTINGS_KEY = 'sbcSolverSettings';
+	let cachedSolverSettings;
+
+	let setSolverSettings = function (key, Settings) {
+		let SolverSettings = getSolverSettings();
+		SolverSettings[key] = Settings
+        cachedSolverSettings = SolverSettings
+		localStorage.setItem(SOLVER_SETTINGS_KEY, JSON.stringify(cachedSolverSettings));
+	};
+
+	let getSolverSettings = function () {
+		if (cachedSolverSettings) {
+			return cachedSolverSettings;
+		}
+		cachedSolverSettings = {};
+		let SolverSettings = localStorage.getItem(SOLVER_SETTINGS_KEY);
+		if (SolverSettings) {
+			cachedSolverSettings = JSON.parse(SolverSettings);
+		}
+        else {
+            cachedSolverSettings = defaultSBCSolverSettings
+        }
+
+		return cachedSolverSettings;
+	};
+
+	const boolClickHandler = (key, evt) => {
+     
+		const sbcSolverSetting = getSolverSettings() || {};
 		if (sbcSolverSetting[key]) {
 			sbcSolverSetting[key] = false;
 			$(evt.currentTarget).removeClass('toggled');
@@ -1233,15 +1319,48 @@
 			sbcSolverSetting[key] = true;
 			$(evt.currentTarget).addClass('toggled');
 		}
-		setValue('sbcSolverSettings', sbcSolverSetting);
+		setSolverSettings(key, sbcSolverSetting[key]);
 	};
 
 	const resetKeyToDefault = (key) => {
-		const sbcSolverSetting = getValue('sbcSolverSettings') || {};
-		sbcSolverSetting[key] = false;
-		setValue('sbcSolverSettings', sbcSolverSetting);
+		setSolverSettings(key, defaultSBCSolverSettings[key]);
 	};
 
+  const generateTextInput = (
+  label,
+  id,
+  info,
+  value,
+  type = "number",
+  additionalClasses = "settings-field",
+  pattern = ".*",
+) => {
+  const key = id;
+  setSolverSettings(key, value);
+  if (value) {
+     
+    setTimeout(() => {
+      $(`#${id[key]}`).val(value);
+    });
+  }
+  if (!eventMappers.has(key)) {
+    $(document).on("input", `#${id[key]}`, ({ target: { value } }) => {
+      setSolverSettings(key, value);
+    });
+    eventMappers.add(key);
+  }
+  return `<div class="price-filter ${additionalClasses}">
+       <div class="info">
+           <span class="secondary label">
+           <button id='${id[key]}_tooltip' style="font-size:16px" class="flat camel-case">${label}</button> :<br/><small>${info}</small></span>
+       </div>
+       <div class="buttonInfo">
+           <div class="inputBox">
+               <input pattern="${pattern}" type="${type}" class="numericInput" id='${id[key]}' placeholder=${value}>
+           </div>
+       </div>
+    </div>`;
+};
 	const generateToggleInput = (
 		label,
 		id,
@@ -1250,23 +1369,19 @@
 		additionalClasses = 'settings-field'
 	) => {
 		const key = id;
-		if (isToggled) {
-			resetKeyToDefault(key);
-			setTimeout(() => {
-				$(`#${id[key]}`).click();
+
+			$(document).on('click touchend', `#${key}_toggle`, (evt) => {
+				boolClickHandler(key, evt);
 			});
-		}
-		if (!eventMappers.has(key)) {
-			$(document).on('click touchend', `#${id[key]}`, (evt) => {
-				clickHandler(key, evt);
-			});
-			eventMappers.add(key);
-		}
+        let addClass="notToggled"
+			if (isToggled){
+                addClass="toggled"
+            }
 		return `
     <div class="price-filter  ${additionalClasses}">
         <div class="ut-toggle-cell-view">
            <span class="ut-toggle-cell-view--label">${label} <br/><small>${info}</small></span>
-             <div id='${id[key]}' class="ut-toggle-control">
+             <div id='${key}_toggle' class="ut-toggle-control ${addClass}">
                <div class="ut-toggle-control--track">
               </div>
               <div class= "ut-toggle-control--grip" >
@@ -1277,14 +1392,12 @@
 	};
 
 	const defaultSBCSolverSettings = {
-		ApiUrl: 'http://127.0.0.1:8000/solve',
+		apiUrl: 'http://127.0.0.1:8000/solve',
 		useConcept: false,
-		showFavouritesToolBar: true,
-		showPrices: true,
+		show1ClickSideBar: true,
 		maxSolveTime: 120,
-		autoSubmit: 'Optimal',
-		showSolverLoadingScreen: true,
 		priceCacheMinutes: 60,
+        showPrices:true
 	};
 
 	const generateSbcSolveTab = () => {
@@ -1320,8 +1433,11 @@
 
 	JSUtils.inherits(sbcSettingsView, UTView);
 
-	let idShowSquadPrice;
+	
 	sbcSettingsView.prototype._generate = function _generate() {
+        
+        let settings = getSolverSettings()
+        
 		if (!this._generated) {
 			let container = document.createElement('div');
 			container.classList.add('ut-market-search-filters-view');
@@ -1334,13 +1450,42 @@
 			wrapper.appendChild(
 				$(` <div class='sbcSolver-settings-wrapper ut-pinned-list'>
           <div class="sbcSolver-settings-header">
-          <h1 class="secondary">SBC Solver Settings</h1>
+          <h1 class="secondary">WebApp UI Settings</h1>
           ${generateToggleInput(
-						'showSquadPrice',
-						idShowSquadPrice,
-						'showSquadPriceInfo',
-						true
+						'Show Prices',
+						'showPrices',
+						'Show Prices above Players',
+						settings['showPrices']
 					)}
+                      ${generateToggleInput(
+						'Use Concept Players',
+						'useConcept',
+						'Solve using concept players',
+						settings['useConcept']
+					)}
+                     ${generateToggleInput(
+						'Show 1 Click Sidebar',
+						'show1ClickSideBar',
+						'Show 1 click sidebar',
+						settings['show1ClickSideBar']
+					)}
+
+                    ${generateTextInput(
+                    'Backend Api Url',
+                    'apiUrl',
+                    'Url for solver',
+                    settings['apiUrl'],
+                    "text",
+
+                )}
+                    ${generateTextInput(
+                    'Price Cache',
+                    'priceCacheMinutes',
+                    'Minutes to cache prices for',
+                    settings['priceCacheMinutes'],
+                    "number",
+
+                )}
           `)[0]
 			);
 			container.appendChild(wrapper);
