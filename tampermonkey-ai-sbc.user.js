@@ -656,27 +656,7 @@
 				] = players.filter((f) => item.id == f.id)[0];
 			});
 		_squad.setPlayers(_solutionSquad, true);
-		services.SBC.saveChallenge(_challenge).observe(
-			undefined,
-			async function (sender, data) {
-				if (!data.success) {
-					showNotification(
-						'Failed to save squad.',
-						UINotificationType.NEGATIVE
-					);
-					_squad.removeAllItems();
-					hideLoader();
-					if (data.error) {
-						showNotification(
-							`Error code: ${data.error.code}`,
-							UINotificationType.NEGATIVE
-						);
-					}
-					return;
-				}
-				
-			}
-		);
+
         await loadChallenge(_challenge);
 		if (solution.status_code == 4 && autoSubmit) {
 			console.log(_challenge, sbcSet);
@@ -1031,24 +1011,19 @@
             img.remove()
 
 });
-console.log(doc.body.innerHTML);
-		$(doc.body.innerHTML)
-			.find('#cheapest-players-row')
-			.find('.col-9')
-			.each(function (i, obj) {
+
+        let cbrRow=doc.getElementById("cheapest-players-row")
+		let col9=cbrRow.getElementsByClassName('col-9')
+        for (let i = 0; i < col9.length; i++) {         
 				PriceItem(
 					{
-						definitionId:
-							obj.innerText.replace('Rated players', '').trim() + '_CBR',
+						"definitionId":col9[i].innerText.replace('Rated players', '').trim() + '_CBR',
 					},
 					convertAbbreviatedNumber(
-						$(futBinCheapestByRatingResponse)
-							.find('#cheapest-players-row')
-							.find('.d-none')
-							[i * 5].innerText.trim()
+						cbrRow.getElementsByClassName('d-none')[i * 5].innerText.trim()
 					)
 				);
-			});
+        };
 	};
 	const fetchPlayerPrices = async (players) => {
 		const idsArray = players
