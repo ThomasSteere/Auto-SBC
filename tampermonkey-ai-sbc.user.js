@@ -805,7 +805,7 @@
         _squad.setPlayers(_solutionSquad, true);
 
         await loadChallenge(_challenge);
-        if (solution.status_code == 4 && autoSubmit) {
+        if (solution.status_code == 99 && autoSubmit ) {
 
             await	sbcSubmit(_challenge, sbcSet);
             //  solveSBC(sbcData,true)
