@@ -262,15 +262,6 @@ def create_player_level_constraint(df, model, player, map_idx, players_grouped, 
 
 
 @runtime
-def create_squad_rating_constraint_1(df, model, player, map_idx, players_grouped, num_cnts, SQUAD_RATING, NUM_PLAYERS):
-    '''Squad rating: Min XX (>=) based on average rating.'''
-    rating = df["rating"].tolist()
-    model.Add(cp_model.LinearExpr.WeightedSum(player, rating)
-              >= (SQUAD_RATING) * (NUM_PLAYERS))
-    return model
-
-
-@runtime
 def create_squad_rating_constraint_2(df, model, player, map_idx, players_grouped, num_cnts, NUM_PLAYERS, SQUAD_RATING):
     '''Squad rating: Min XX (>=) based on
     https://www.reddit.com/r/EASportsFC/comments/5osq7k/new_overall_rating_figured_out.
@@ -778,7 +769,7 @@ def SBC(df,sbc):
     # Specify the number of parallel workers (i.e. threads) to use during search.
     # This should usually be lower than your number of available cpus + hyperthread in your machine.
     # Setting this to 16 or 24 can help if the solver is slow in improving the bound.
-    solver.parameters.num_search_workers = 16
+    solver.parameters.num_search_workers = 24
     # Stop the search when the gap between the best feasible objective (O) and
     # our best objective bound (B) is smaller than a limit.
     # Relative: abs(O - B) / max(1, abs(O)).
