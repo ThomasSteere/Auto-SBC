@@ -20,6 +20,7 @@ def preprocess_data(df: pd.DataFrame):
 def runAutoSBC(sbc,players):
     df = pd.json_normalize(players)
     # Remove All Players not matching quality first
+    df = df[df["price"] > 0]
     for req in sbc['constraints']:
         if req['requirementKey'] == 'PLAYER_QUALITY':
                 if req['scope']=='GREATER' or req['scope']=='EXACT':
