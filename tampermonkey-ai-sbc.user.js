@@ -1155,10 +1155,10 @@
         const UTPlayerItemView_renderItem = UTPlayerItemView.prototype.renderItem;
         UTPlayerItemView.prototype.renderItem = async function (item, t) {
             const result = UTPlayerItemView_renderItem.call(this, item, t);
-            let settings = getSolverSettings()
+           
             const duplicateIds = await fetchDuplicateIds()
             if (duplicateIds.includes(item.id)){this.__root.style.opacity = "0.4";}
-            if (getPrice(item) && settings['showPrices']) {
+            if (getPrice(item) && getSettings(0,0,'showPrices')) {
                 let price = getPrice(item) * (isItemFixed(item) ? 0 : 1);
                 this.__root.prepend(
                     createElem(
@@ -1458,8 +1458,8 @@
         appendSquadTotal(total);
     };
     const appendSquadTotal = (total) => {
-        let settings = getSolverSettings()
-        if(settings['showPrices']){
+       
+        if(getSettings(0,0,'showPrices')){
             if ($('.squadTotal').length) {
                 $('.squadTotal').text(total.toLocaleString());
             } else {
@@ -1476,8 +1476,8 @@
         }
     };
     const appendPriceToSlot = (rootElement, price) => {
-        let settings = getSolverSettings()
-        if(settings['showPrices']){
+       
+        if(getSettings(0,0,'showPrices')){
             rootElement.prepend(
                 createElem(
                     'div',
@@ -1509,7 +1509,7 @@
         let sets = await sbcSets();
         let favourites = sets.categories.filter((f) => f.name == 'Favourites')[0]
         .setIds;
-        let favouriteSBCSets = sets.sets.filter((f) => favourites.includes(f.id));
+        let favouriteSBCSets = sets.sets.filter((f) => favourites.includes(f.id)).sort((a, b) => b.timesCompleted - a.timesCompleted)
         let tiles = [];
         $('.sbc-auto').remove();
         if ($('.ut-tab-bar-view').find('.sbc-auto').length === 0 && favouriteSBCSets.length>0) {
@@ -1629,7 +1629,7 @@
 
     sbcSettingsView.prototype._generate = function _generate() {
 
-        let settings = getSolverSettings()
+       
 
         if (!this._generated) {
             var e = document.createElement("div");
@@ -1650,6 +1650,10 @@
             h1.innerHTML = "SBC Solver Settings";
             g.appendChild(h1)
             f.appendChild(g)
+            let sbcUITile = createSettingsTile(f,'Customise UI','ui')
+            createToggle(sbcUITile,'Show Prices','showPrices',getSettings(0,0,'showPrices'),(toggleSP)=>{
+                  saveSettings(0,0,'showPrices',toggleSP.getToggleState())
+                })
             let sbcRulesTile = createSettingsTile(f,'Customise SBC','customRules')
             createSBCCustomRulesPanel(sbcRulesTile)
 
@@ -1729,7 +1733,7 @@
         })
     }
     const saveSettings = (sbc,challenge,id,value) =>{
-        let settings = getSolverSettings()
+            let settings = getSolverSettings()
         settings['sbcSettings']??={}
         let sbcSettings=settings['sbcSettings']
         sbcSettings[sbc]??={}
@@ -1739,7 +1743,7 @@
         setSolverSettings('sbcSettings',sbcSettings)
     }
     const getSettings = (sbc,challenge,id)=>{
-     let settings = getSolverSettings()
+         let settings = getSolverSettings()
      let returnValue = settings['sbcSettings']?.[sbc]?.[challenge]?.[id] ?? settings['sbcSettings']?.[sbc]?.[0]?.[id] ?? settings['sbcSettings']?.[0]?.[0]?.[id]
      return returnValue
 
