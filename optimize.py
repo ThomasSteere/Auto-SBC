@@ -340,6 +340,19 @@ def create_min_overall_constraint(df, model, player, map_idx, players_grouped, n
         model.Add(cp_model.LinearExpr.Sum(expr) >= NUM_MIN_OVERALL[i])
     return model
 
+@runtime
+def create_max_overall_constraint(df, model, player, map_idx, players_grouped, num_cnts,  NUM_MAX_OVERALL, MAX_OVERALL):
+    '''Max OVR of XX : Max X (>=)'''
+    MAX_rating = df["rating"].max()
+    for i, rating in enumerate(MAX_OVERALL):
+        expr = []
+        for rat in range(rating, MAX_rating + 1):
+            if rat not in map_idx["rating"]:
+                continue
+            expr += players_grouped["rating"].get(map_idx["rating"][rat], [])
+        model.Add(cp_model.LinearExpr.Sum(expr) <= NUM_MAX_OVERALL[i])
+    return model
+
 
 @runtime
 def create_chemistry_constraint(df, model, chem, z_teamId, z_leagueId, z_nation, player, players_grouped, num_cnts, map_idx, b_c, b_l, b_n , formation, CHEMISTRY, CHEM_PER_PLAYER, NUM_PLAYERS):
@@ -660,7 +673,7 @@ def get_dict(df, col):
 
 
 @runtime
-def SBC(df,sbc):
+def SBC(df,sbc,maxSolveTime):
 
 
     '''Optimize SBC using Constraint Integer Programming'''
@@ -688,7 +701,7 @@ def SBC(df,sbc):
     CHEMISTRY=0
     CHEM_PER_PLAYER=0
     
-   
+
     for req in sbc['constraints']:
         print('Adding Constraint for ', req)
         if req['requirementKey']=='CHEMISTRY_POINTS':
@@ -737,6 +750,9 @@ def SBC(df,sbc):
         if req['requirementKey'] == 'PLAYER_MIN_OVR':
             model = create_min_overall_constraint(df, model, player, map_idx, players_grouped, num_cnts, [
                                                   req['count']], [req['eligibilityValues'][0]]) 
+        if req['requirementKey'] == 'PLAYER_MAX_OVR':
+            model = create_max_overall_constraint(df, model, player, map_idx, players_grouped, num_cnts, [
+                                                  req['count']], [req['eligibilityValues'][0]]) 
         if req['requirementKey'] == 'TEAM_RATING':  
             model = create_squad_rating_constraint_3(
                 df, model, player, map_idx, players_grouped, num_cnts, NUM_PLAYERS, req['eligibilityValues'][0])
@@ -764,7 +780,7 @@ def SBC(df,sbc):
     '''Solver Parameters'''
     # solver.parameters.random_seed = 42
     # Whether the solver should log the search progress.
-    solver.parameters.max_time_in_seconds = 120
+    solver.parameters.max_time_in_seconds = maxSolveTime
     solver.parameters.log_search_progress = True
     # Specify the number of parallel workers (i.e. threads) to use during search.
     # This should usually be lower than your number of available cpus + hyperthread in your machine.

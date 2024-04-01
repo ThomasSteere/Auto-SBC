@@ -340,7 +340,7 @@
                         if (response.status !== 400 && !response.response.endOfList) {
                             searchCriteria.offset += searchCriteria.count;
 
-
+                            console.log('Concepts Retrieved',searchCriteria.offset)
                             getAllConceptPlayers();
                         } else {
                             conceptPlayersCollected = true;
@@ -363,15 +363,17 @@
     const sendUnassignedtoTeam = async () => {
         let ulist = await fetchUnassigned();
         return new Promise((resolve) => {
-            repositories.Item.unassigned.clear();
-            repositories.Item.unassigned.reset();
+
 
             services.Item.move(
                 ulist.filter((l) => l.isMovable() ),
                 7
             ).observe(this, function (obs, event) {resolve(ulist)});
         })}
+
     const fetchUnassigned = () => {
+        repositories.Item.unassigned.clear();
+        repositories.Item.unassigned.reset();
         return new Promise((resolve) => {
             let result = [];
             services.Item.requestUnassignedItems().observe(
@@ -508,8 +510,12 @@
     const showLoader = (countdown=false) => {
         if (countDown){
             css(getElement('.numCounter'), {
-            display: 'block',
-        });
+                display: 'block',
+            });
+        } else {
+            css(getElement('.numCounter'), {
+                display: 'none',
+            });
         }
         addClass(getElement('.ut-click-shield'), 'showing');
         css(getElement('.loaderIcon'), {
@@ -517,7 +523,7 @@
         });
     };
     const hideLoader = () => {
-         css(getElement('.numCounter'), {
+        css(getElement('.numCounter'), {
             display: 'none',
         });
         removeClass(getElement('.ut-click-shield'), 'showing');
@@ -556,7 +562,7 @@
         });
     };
 
-    const sbcChallenges = async function (set) {
+    const getChallenges = async function (set) {
         return new Promise((resolve, reject) => {
 
             services.SBC.requestChallengesForSet(set).observe(
@@ -594,15 +600,26 @@
         //Get SBC Data if given a setId
 
         let sbcData = await sbcSets();
-        let sbcSet = sbcData.sets.filter((e) => e.id == sbcId)[0];
-        let challenges = await sbcChallenges(sbcSet);
+        let sbcSet = sbcData.sets.filter((e) => e.id == sbcId)
+        if(sbcSet.length==0){
+            showNotification('SBC not available', UINotificationType.NEGATIVE);
+            createSBCTab();
+            return null
+        }
 
+        let challenges = await getChallenges(sbcSet[0])
+        let uncompletedChallenges=[]
         if (challengeId == 0) {
 
             //Get last/hardest SBC if no challenge given
-            let uncompletedChallenges = challenges?.challenges.filter(
+             uncompletedChallenges = challenges?.challenges.filter(
                 (f) => f.status != 'COMPLETED'
             );
+            if(uncompletedChallenges.length==0){
+            showNotification('SBC not available', UINotificationType.NEGATIVE);
+            createSBCTab();
+            return null
+        }
             challengeId = uncompletedChallenges[uncompletedChallenges.length - 1].id;
         }
 
@@ -611,7 +628,7 @@
         );
 
         let newSbcSquad = new UTSBCSquadOverviewViewController();
-        newSbcSquad.initWithSBCSet(sbcSet, challengeId);
+        newSbcSquad.initWithSBCSet(sbcSet[0], challengeId);
         let { _challenge } = newSbcSquad;
 
         const challengeRequirements = _challenge.eligibilityRequirements.map(
@@ -633,6 +650,7 @@
             challengeId: _challenge.id,
             setId: _challenge.setId,
             brickIndices: _challenge.squad.simpleBrickIndices,
+            finalSBC:uncompletedChallenges.length==1,
             currentSolution: _challenge.squad._players.map(
                 (m) => m._item._metaData?.id
             ).slice(0,11),
@@ -648,13 +666,12 @@
 
             await fetchLowestPriceByRating();
             await fetchPlayerPrices(players);
-            if (useConcept) {
-                conceptPlayers = await getConceptPlayers();
-                await fetchPlayerPrices(conceptPlayers);
-            }
+            conceptPlayers = await getConceptPlayers();
+            await fetchPlayerPrices(conceptPlayers);
+
         };
     };
-    let useConcept = false;
+ 
     const duplicateDiscount = 0.1;
     const untradeableDiscount = 0.8;
     const conceptPremium = 10;
@@ -671,12 +688,19 @@
         counter.count(pad(count,4))
     }
     var counter
-    const solveSBC = async (sbcId,challengeId,autoSubmit = false,autoOpen=false) => {
+    let failedChallenges
+    const solveSBC = async (sbcId,challengeId,autoSubmit = false,repeat=null,autoOpen=false) => {
+        counter = null
         counter = new Counter('.numCounter', {direction:'rtl', delay:200, digits:3})
         showLoader();
 
 
         let sbcData = await fetchSBCData(sbcId, challengeId);
+
+        if (sbcData==null){
+            hideLoader()
+            return
+        }
         await sendUnassignedtoTeam()
         let players = await fetchPlayers();
 
@@ -685,7 +709,7 @@
             idToPlayerItem[item.definitionId] = item;
         }
         await fetchPlayerPrices(players);
-        if (useConcept) {
+        if (getSettings(sbcId,sbcData.challengeId,'useConcepts')) {
             if (conceptPlayersCollected) {
                 players = players.concat(conceptPlayers);
             } else {
@@ -695,10 +719,12 @@
                 );
             }
         }
+        let maxRating = getSettings(sbcId,sbcData.challengeId,'maxRating')
+        let useDupes=getSettings(sbcId,sbcData.challengeId,'useDupes')
         let backendPlayersInput = players
         .filter(
             (item) =>
-            item.loans < 0 && //item.rating<83 &&
+            item.loans < 0 && (item.rating<=maxRating || (useDupes && duplicateIds.includes(item.id))) &&
             (!isItemLocked(item) || duplicateIds.includes(item.id) )
         )
         .map((item) => {
@@ -732,11 +758,11 @@
                 isFixed: isItemFixed(item),
                 concept: item.concept,
                 price:
-                getPrice(item) *
-                (duplicateIds.includes(item.id) ? duplicateDiscount : 1) *
-                (item.untradeable ? untradeableDiscount : 1) *
-                (isItemFixed(item) ? 0 : 1) *
-                (item.concept ? conceptPremium : 1) -
+                (getPrice(item) *
+                 (duplicateIds.includes(item.id) ? duplicateDiscount : 1) *
+                 (item.untradeable ? untradeableDiscount : 1) *
+                 (isItemFixed(item) ? 0 : 1) *
+                 (item.concept ? conceptPremium : 1)) -
                 (100 - item.rating),
             };
         });
@@ -744,16 +770,19 @@
         const input = JSON.stringify({
             clubPlayers: backendPlayersInput,
             sbcData: sbcData,
+            maxSolveTime:getSettings(sbcId,sbcData.challengeId,'maxSolveTime')
         });
         console.log('Sending SBC to Solve...');
-        count = 121
-       showLoader(true);
+        count = getSettings(sbcId,sbcData.challengeId,'maxSolveTime')
+        showLoader(true);
         let countDownInterval = setInterval(countDown, 1000)
         let solution = await makePostRequest(apiUrl, input);
         clearInterval(countDownInterval)
         if (solution.status_code != 2 && solution.status_code != 4) {
+
             hideLoader();
             showNotification(solution.status, UINotificationType.NEGATIVE);
+            //if (autoSubmit && !sbcData.finalSBC){solveSBC(sbcId,0,true,repeat)}
             return;
         }
         showNotification(
@@ -765,7 +794,7 @@
         console.log(JSON.parse(solution.results));
         let allSbcData = await sbcSets();
         let sbcSet = allSbcData.sets.filter((e) => e.id == sbcData.setId)[0];
-        let challenges = await sbcChallenges(sbcSet);
+        let challenges = await getChallenges(sbcSet)
         let sbcChallenge = challenges.challenges.filter((i) => i.id == sbcData.challengeId)[0]
         await loadChallenge(
             sbcChallenge
@@ -805,11 +834,20 @@
         _squad.setPlayers(_solutionSquad, true);
 
         await loadChallenge(_challenge);
-        if (solution.status_code == 99 && autoSubmit ) {
+       let autoSubmitId=getSettings(sbcId,sbcData.challengeId,'autoSubmit')
+        if (((solution.status_code == autoSubmitId) || autoSubmitId==1) && autoSubmit) {
 
             await	sbcSubmit(_challenge, sbcSet);
-            //  solveSBC(sbcData,true)
-            //   goToUnassignedView()
+            if (repeat==null){
+                console.log('getRepeatCount')
+                repeat=getSettings(sbcId,sbcData.challengeId,'repeatCount')
+
+            }
+            console.log(repeat,'repeatCount',sbcData)
+            if (repeat!=0) {
+              let newRepeat=sbcData.finalSBC?repeat-1:repeat
+                   solveSBC(sbcId,0,true,newRepeat)
+                }
         }
         else{
             let showSBC = new UTSBCSquadSplitViewController
@@ -913,11 +951,11 @@
     }
 
     const sbcSubmitChallengeOverride = () => {
-        const submitChallenge = services.SBC.submitChallenge;
-        services.SBC.submitChallenge =function (challenge, set, i) {
-            submitChallenge.call(this, challenge, set, i);
+        const sbcSubmit =   UTSBCSquadSplitViewController._submitChallenge
+        UTSBCSquadSplitViewController._submitChallenge = function (...args) {
+            sbcSubmit.call(this, ...args);
             createSBCTab()
-            
+
         }
     }
     const sbcSubmit = async function (challenge,sbcSet,i) {
@@ -932,6 +970,7 @@
                             'Failed to submit',
                             UINotificationType.NEGATIVE
                         );
+                         gClickShield.hideShield(EAClickShieldView.Shield.LOADING)
                         reject(res);
 
                     } else {
@@ -939,7 +978,7 @@
                             'SBC Submitted',
                             UINotificationType.POSITIVE
                         );
-                         createSBCTab()
+                        createSBCTab()
                         resolve(res);
                     }
                 }
@@ -978,8 +1017,6 @@
     const unlockedLabel = 'SBC Lock';
     const fixedLabel = 'SBC Use actual prices';
     const unfixedLabel = 'SBC Set Price to Zero';
-    const notThisLabel = 'SBC Not this SBC';
-    const useThisLabel = 'SBC Use in SBC';
 
     const playerItemOverride = () => {
         const UTDefaultSetItem = UTSlotActionPanelView.prototype.setItem;
@@ -1334,6 +1371,7 @@
                     cardPrice = maxPrice;
 
                     if (prices.updated == 'Never' || prices.updated.includes('week')) {
+
                         //never indicates its not on the market so give it the lowest price of the rating with a premium
                         cardPrice = player.isSpecial() && player.rating > 81
                             ? cbrPrice * 1.5
@@ -1369,7 +1407,8 @@
         const packOpen = UTStoreViewController.prototype.eOpenPack;
         UTStoreViewController.prototype.eOpenPack = async function (...args) {
             await sendUnassignedtoTeam();
-            console.log(...args)
+            createSBCTab()
+            //console.log(...args)
             const result = packOpen.call(this,...args);
             return result;
         };
@@ -1501,6 +1540,7 @@
             sbcBtns.appendChild(btn)
 
             $('#' + e.id).click(async function () {
+                 createSBCTab();
                 services.Notification.queue([
                     e.name + ' SBC Started',
                     UINotificationType.POSITIVE,
@@ -1542,21 +1582,14 @@
             cachedSolverSettings = JSON.parse(SolverSettings);
         }
         else {
-            cachedSolverSettings = defaultSBCSolverSettings
+            cachedSolverSettings = {}
         }
 
         return cachedSolverSettings;
     };
 
 
-    const defaultSBCSolverSettings = {
-        apiUrl: 'http://127.0.0.1:8000/solve',
-        useConcept: false,
-        show1ClickSideBar: true,
-        maxSolveTime: 120,
-        priceCacheMinutes: 60,
-        showPrices:true
-    };
+ 
 
     const generateSbcSolveTab = () => {
         const sbcSolveTab = new UTTabBarItemView();
@@ -1568,10 +1601,10 @@
     };
 
     const sbcSettingsController = function (t) {
-        UTViewController.call(this);
+        UTHomeHubViewController.call(this);
     };
 
-    JSUtils.inherits(sbcSettingsController, UTViewController);
+    JSUtils.inherits(sbcSettingsController, UTHomeHubViewController);
 
     sbcSettingsController.prototype._getViewInstanceFromData = function () {
         return new sbcSettingsView();
@@ -1580,16 +1613,18 @@
     sbcSettingsController.prototype.viewDidAppear = function () {
         this.getNavigationController().setNavigationVisibility(true, true);
     };
-
+     sbcSettingsController.prototype.viewWillDisappear  = function () {
+        this.getNavigationController().setNavigationVisibility(false, false);
+    };
     sbcSettingsController.prototype.getNavigationTitle = function () {
         return 'SBC Solver';
     };
 
     const sbcSettingsView = function (t) {
-        UTView.call(this);
+        UTHomeHubView.call(this);
     };
 
-    JSUtils.inherits(sbcSettingsView, UTView);
+    JSUtils.inherits(sbcSettingsView, UTHomeHubView);
 
 
     sbcSettingsView.prototype._generate = function _generate() {
@@ -1615,7 +1650,7 @@
             h1.innerHTML = "SBC Solver Settings";
             g.appendChild(h1)
             f.appendChild(g)
-            let sbcRulesTile = createSettingsTile(f,'Custom SBC Rules')
+            let sbcRulesTile = createSettingsTile(f,'Customise SBC','customRules')
             createSBCCustomRulesPanel(sbcRulesTile)
 
 
@@ -1628,57 +1663,101 @@
     let sbcSet
     const createSBCCustomRulesPanel = async (parent) => {
         let sbcData = await sbcSets();
+        console.log(sbcData.sets)
         let SBCList=  sbcData.sets.filter(f=>!f.isComplete()).map(e=>
-                                       new UTDataProviderEntryDTO(e.id,e.id,e.name)
-                                      )
+                                                                  new UTDataProviderEntryDTO(e.id,e.id,e.name)
+                                                                 )
+        SBCList.unshift(new UTDataProviderEntryDTO(0,0,'All SBCS'))
         createDropDown(parent,
                        'Choose SBC',
                        'sbcId',
                        SBCList,
                        '1',
                        async (dropdown)=>{
-            console.log(dropdown.getValue())
+           
             if (document.contains(document.getElementsByClassName('ut-sbc-challenge-requirements-view')[0])){
                 document.getElementsByClassName('ut-sbc-challenge-requirements-view')[0].remove()
             }
-            let allSbcData = await sbcSets();
-            sbcSet = allSbcData.sets.filter((e) => e.id == dropdown.getValue())[0];
-            challenges = await sbcChallenges(sbcSet);
-            let challenge= challenges.challenges.filter(f=>f.status != 'COMPLETED').map(e=>
+            let  challenge=[]
+            if(dropdown.getValue()!=0){
+                let allSbcData = await sbcSets();
+                sbcSet = allSbcData.sets.filter((e) => e.id == dropdown.getValue())[0];
+
+                challenges = await getChallenges(sbcSet)
+
+                challenge= challenges.challenges.map(e=>
                                                      new UTDataProviderEntryDTO(e.id,e.id,e.name)
                                                     )
-            createDropDown(parent,'Choose Challenge','sbcChallengeId',challenge,null,async (dropdown)=>{
+            }
+            challenge.unshift(new UTDataProviderEntryDTO(0,0,'All Challenges'))
+            createDropDown(parent,'Choose Challenge','sbcChallengeId',challenge,null,async (dropdownChallenge)=>{
                 if (document.contains(document.getElementsByClassName('ut-sbc-challenge-requirements-view')[0])){
                     document.getElementsByClassName('ut-sbc-challenge-requirements-view')[0].remove()
                 }
-                let sbcChallenge=challenges.challenges.filter((i) => i.id == dropdown.getValue())[0]
-                console.log(challenges)
-                let reqs = new UTSBCChallengeRequirementsView
-                reqs._generate
-                reqs.renderChallengeRequirements(sbcChallenge,true)
-                await loadChallenge(
-                    sbcChallenge
-                );
-             
-                reqs.renderChallengeRequirements(sbcChallenge,true)
-                parent.appendChild(reqs.getRootElement())
+                let sbcParamsTile = createSettingsTile(parent,'SBC Solver Paramaters','submitParams')
+                createDropDown(sbcParamsTile,
+                               '1-click Auto Submit',
+                               'autoSubmit',
+                               [{name:'Always',id:1},
+                                {name:'Optimal',id:4},
+                                {name:'Never',id:0}].map(e=>
+                                                               new UTDataProviderEntryDTO(e.id,e.id,e.name)
+                                                              ),
+                               getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'autoSubmit'),
+                               (dropdownAS)=>{
+                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'autoSubmit',parseInt(dropdownAS.getValue()))
+                })
+                createNumberSpinner(sbcParamsTile,'Repeat Count (-1 repeats infinitely)','repeatCount',-1,100,getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'repeatCount'), (numberspinnerRC)=>{
+                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'repeatCount',numberspinnerRC.getValue())
+                })
+
+                createToggle(sbcParamsTile,'Use Concepts','useConcepts',getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useConcepts'),(toggleUC)=>{
+                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useConcepts',toggleUC.getToggleState())
+                })
+                createNumberSpinner(sbcParamsTile,'Player Max Rating','maxRating',48,99,getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxRating'),(numberspinnerMR)=>{
+                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxRating',numberspinnerMR.getValue())
+                })
+                 createToggle(sbcParamsTile,'Ignore Max Rating for Duplicates','useDupes',getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useDupes'),(toggleUD)=>{
+                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useDupes',toggleUD.getToggleState())
+                })
+                createNumberSpinner(sbcParamsTile,'API Max Solve Time','maxSolveTime',10,990,getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxSolveTime'),(numberspinnerMST)=>{
+                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxSolveTime',numberspinnerMST.getValue())
+                })
 
 
-                let sbcAddRulesTile = createSettingsTile(parent,'Add Custom SBC Rules')
-                //{'constraints': [{'scope': 'GREATER', 'count': -1, 'requirementKey': 'TEAM_RATING', 'eligibilityValues': [89]}]
- createDropDown(sbcAddRulesTile,
-                       'Choose Scope',
-                       'scope',
-                       [{name:'Greater Than',id:'GREATER'},{name:'Less Than',id:'LOWER'},{ name:'Exact',id:'EXACT'}].map(e=>
-                                       new UTDataProviderEntryDTO(e.id,e.id,e.name)
-                                      ),
-                       'EXACT',
-                       async (dropdown)=>{})
-createNumberSpinner('Count','sbcCustmCount')
+            })
+        })
+    }
+    const saveSettings = (sbc,challenge,id,value) =>{
+        let settings = getSolverSettings()
+        settings['sbcSettings']??={}
+        let sbcSettings=settings['sbcSettings']
+        sbcSettings[sbc]??={}
+        sbcSettings[sbc][challenge]??={}
+        sbcSettings[sbc][challenge][id]=value
 
-        
-})
-})
+        setSolverSettings('sbcSettings',sbcSettings)
+    }
+    const getSettings = (sbc,challenge,id)=>{
+     let settings = getSolverSettings()
+     let returnValue = settings['sbcSettings']?.[sbc]?.[challenge]?.[id] ?? settings['sbcSettings']?.[sbc]?.[0]?.[id] ?? settings['sbcSettings']?.[0]?.[0]?.[id]
+     return returnValue
+
+    }
+       const defaultSBCSolverSettings = {
+        apiUrl: 'http://127.0.0.1:8000/solve',
+        useConcepts: false,
+        autoSubmit:0,
+        maxSolveTime: 120,
+        priceCacheMinutes: 60,
+        maxRating:99,
+        repeatCount:0,
+        showPrices:true,
+        useDupes:true
+    };
+    const initDefaultSettings=()=>{
+      Object.keys(defaultSBCSolverSettings).forEach(id=>
+       saveSettings(0,0,id, getSettings(0,0,id)??defaultSBCSolverSettings[id]))
     }
     const createPanel=()=>{
         var panel = document.createElement("div");
@@ -1686,7 +1765,7 @@ createNumberSpinner('Count','sbcCustmCount')
             panel.classList.add("panelActionRow");
         return panel
     }
-    const createNumberSpinner=(label,id,min=0,max=100,value=1,target=()=>{})=>{
+    const createNumberSpinner=(parentDiv,label,id,min=0,max=100,value=1,target=()=>{})=>{
         var i = document.createElement("div");
         i.classList.add("panelActionRow");
         var o = document.createElement("div");
@@ -1698,12 +1777,15 @@ createNumberSpinner('Count','sbcCustmCount')
         i.appendChild(o)
         let spinner = new UTNumberInputSpinnerControl
         let panel = createPanel()
-        panel.appendChild(i)
-        panel.appendChild(spinner.getRootElement())
+
         spinner.init()
         spinner.setLimits(min,max)
         spinner.setValue(value)
         spinner.addTarget(spinner,target,EventType.CHANGE)
+        panel.appendChild(i)
+        panel.appendChild(spinner.getRootElement())
+        console.log(panel)
+        parentDiv.appendChild(panel)
         return panel
 
     }
@@ -1728,35 +1810,41 @@ createNumberSpinner('Count','sbcCustmCount')
         panel.appendChild(dropdown.getRootElement())
         panel.setAttribute("id",id);
         dropdown.init()
-        console.log(options)
+        
         dropdown.setOptions(options)
 
         dropdown.addTarget(dropdown,target, EventType.CHANGE)
         parentDiv.appendChild(panel)
-        dropdown.setIndexByValue(value)
+        dropdown.setIndexById(value)
         dropdown._triggerActions(EventType.CHANGE)
         return dropdown
     }
-    const createToggle = (label,id)=>{
+    const createToggle = (parentDiv,label,id,value,target)=>{
         let toggle = new UTToggleCellView
 
         let panel = createPanel()
 
         panel.appendChild(toggle.getRootElement())
         toggle.init()
-        let settings = getSolverSettings()
-        if(settings[id]){
+        
+        if(value){
             toggle.toggle()
         }
         toggle.setLabel(label)
-        toggle.addTarget(toggle,()=>{ console.log(toggle.getToggleState()); setSolverSettings(id,toggle.getToggleState());}, EventType.TAP)
+
+        toggle.addTarget(toggle,target, EventType.CHANGE)
+        toggle._triggerActions(EventType.CHANGE)
+        parentDiv.appendChild(panel)
         return panel
 
     }
-    const createSettingsTile = (parentDiv,label) =>{
+    const createSettingsTile = (parentDiv,label,id) =>{
+        if (document.contains(document.getElementById(id))) {
+            document.getElementById(id).remove();
+        }
 
         var tile = document.createElement("div");
-
+        tile.setAttribute("id",id);
         tile.classList.add("tile");
         tile.classList.add("col-1-1");
         tile.classList.add("sbc-settings-wrapper");
@@ -1780,9 +1868,9 @@ createNumberSpinner('Count','sbcCustmCount')
     function Counter(selector, settings){
         let shield=getElement('.ut-click-shield')
         if (!document.contains(document.getElementsByClassName('numCounter')[0])){
-        var counterContent = document.createElement("div");
-        counterContent.classList.add("numCounter");
-        shield.appendChild(counterContent);
+            var counterContent = document.createElement("div");
+            counterContent.classList.add("numCounter");
+            shield.appendChild(counterContent);
         }
         this.settings = Object.assign({
             digits: 5,
@@ -1843,15 +1931,24 @@ createNumberSpinner('Count','sbcCustmCount')
 
 
     const init = () => {
-        sbcViewOverride();
-        futHomeOverride();
-        sbcButtonOverride();
-        playerItemOverride();
-        playerSlotOverride();
-        packOverRide();
-        sideBarNavOverride();
-        favTagOverride();
-        //sbcSubmitChallengeOverride();
+        let isAllLoaded = false;
+        if (services.Localization) {
+            isAllLoaded=true
+        }
+        if (isAllLoaded) {
+            sbcViewOverride();
+            futHomeOverride();
+            sbcButtonOverride();
+            playerItemOverride();
+            playerSlotOverride();
+            packOverRide();
+            sideBarNavOverride();
+            favTagOverride();
+            sbcSubmitChallengeOverride();
+            initDefaultSettings();
+        }else {
+            setTimeout(init, 4000);
+        }
     };
     init();
 })();

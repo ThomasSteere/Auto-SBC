@@ -17,7 +17,8 @@ def preprocess_data(df: pd.DataFrame):
     return df
 
 
-def runAutoSBC(sbc,players):
+def runAutoSBC(sbc,players,maxSolveTime):
+    print(sbc)
     df = pd.json_normalize(players)
     # Remove All Players not matching quality first
     df = df[df["price"] > 0]
@@ -29,7 +30,7 @@ def runAutoSBC(sbc,players):
                     df = df[df["ratingTier"] <= req['eligibilityValues'][0]]
 
     df = preprocess_data(df)
-    final_players,status,status_code = optimize.SBC(df,sbc)
+    final_players,status,status_code = optimize.SBC(df,sbc,maxSolveTime)
     results=[]
     # if status != 2 and status != 4:
     #      return "{'status': {}, 'status_code': {}}".format(status, status_code)
@@ -48,6 +49,7 @@ def runAutoSBC(sbc,players):
         return JSONResponse(content=json_compatible_item_data)
     json_compatible_item_data = jsonable_encoder({'status':status,'status_code':status_code})
     return JSONResponse(content=json_compatible_item_data)
+
 
 
 def calc_squad_rating(rating):
