@@ -19,6 +19,7 @@ async def get_body(request: Request):
     requestData= await request.json()
     sbcData=requestData['sbcData']
     clubPlayers=requestData['clubPlayers']
+    maxSolveTime=requestData['maxSolveTime']
     # solveSettings=requestData['solveSettings']
-    return  setup.runAutoSBC(sbcData,clubPlayers)
+    return  setup.runAutoSBC(sbcData,clubPlayers,maxSolveTime)
     # setup.runAutoSBC(1,2)

@@ -17,9 +17,11 @@ def preprocess_data(df: pd.DataFrame):
     return df
 
 
-def runAutoSBC(sbc,players):
+def runAutoSBC(sbc,players,maxSolveTime):
+    print(sbc)
     df = pd.json_normalize(players)
     # Remove All Players not matching quality first
+    df = df[df["price"] > 0]
     for req in sbc['constraints']:
         if req['requirementKey'] == 'PLAYER_QUALITY':
                 if req['scope']=='GREATER' or req['scope']=='EXACT':
@@ -28,7 +30,7 @@ def runAutoSBC(sbc,players):
                     df = df[df["ratingTier"] <= req['eligibilityValues'][0]]
 
     df = preprocess_data(df)
-    final_players,status,status_code = optimize.SBC(df,sbc)
+    final_players,status,status_code = optimize.SBC(df,sbc,maxSolveTime)
     results=[]
     # if status != 2 and status != 4:
     #      return "{'status': {}, 'status_code': {}}".format(status, status_code)
@@ -49,9 +51,10 @@ def runAutoSBC(sbc,players):
     return JSONResponse(content=json_compatible_item_data)
 
 
+
 def calc_squad_rating(rating):
     '''https://www.reddit.com/r/EASportsFC/comments/5osq7k/new_overall_rating_figured_out'''
     rat_sum = sum(rating)
     avg_rat = rat_sum / 11
     excess = sum(max(rat - avg_rat, 0) for rat in rating)
-    return round(rat_sum + excess) 
+    return round(avg_rat + excess)
