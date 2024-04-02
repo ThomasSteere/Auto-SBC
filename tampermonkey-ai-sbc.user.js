@@ -1836,8 +1836,8 @@
         }
         toggle.setLabel(label)
 
-        toggle.addTarget(toggle,target, EventType.CHANGE)
-        toggle._triggerActions(EventType.CHANGE)
+        toggle.addTarget(toggle,target, EventType.TAP)
+        toggle._triggerActions(EventType.TAP)
         parentDiv.appendChild(panel)
         return panel
 
