@@ -24,6 +24,28 @@
 
     //Add Locked Icon
     let styles = `
+    ::-webkit-scrollbar {
+              -webkit-appearance: none;
+     }
+
+     ::-webkit-scrollbar:vertical {
+              width: 12px;
+     }
+
+     ::-webkit-scrollbar:horizontal {
+              height: 12px;
+     }
+
+     ::-webkit-scrollbar-thumb {
+              background-color: rgba(0, 0, 0, .5);
+              border-radius: 10px;
+              border: 2px solid #ffffff;
+     }
+
+     ::-webkit-scrollbar-track {
+              border-radius: 10px;
+              background-color: #ffffff;
+     }
     .player.locked::before {
     font-family: 'UltimateTeam-Icons';
     position: absolute;
@@ -340,7 +362,7 @@
                         if (response.status !== 400 && !response.response.endOfList) {
                             searchCriteria.offset += searchCriteria.count;
 
-                            console.log('Concepts Retrieved',searchCriteria.offset)
+                            //console.log('Concepts Retrieved',searchCriteria.offset)
                             getAllConceptPlayers();
                         } else {
                             conceptPlayersCollected = true;
@@ -612,14 +634,14 @@
         if (challengeId == 0) {
 
             //Get last/hardest SBC if no challenge given
-             uncompletedChallenges = challenges?.challenges.filter(
+            uncompletedChallenges = challenges?.challenges.filter(
                 (f) => f.status != 'COMPLETED'
             );
             if(uncompletedChallenges.length==0){
-            showNotification('SBC not available', UINotificationType.NEGATIVE);
-            createSBCTab();
-            return null
-        }
+                showNotification('SBC not available', UINotificationType.NEGATIVE);
+                createSBCTab();
+                return null
+            }
             challengeId = uncompletedChallenges[uncompletedChallenges.length - 1].id;
         }
 
@@ -671,7 +693,7 @@
 
         };
     };
- 
+
     const duplicateDiscount = 0.1;
     const untradeableDiscount = 0.8;
     const conceptPremium = 10;
@@ -689,6 +711,32 @@
     }
     var counter
     let failedChallenges
+    const getSBCPrice =  (item,duplicateIds)=>{
+        if(isItemFixed(item)){
+            return 1
+        }
+
+        let sbcPrice=Math.max(getPrice(item),getPrice({definitionId:item._rating+'_CBR'}),100)
+        if(getPrice(item)==0 && item._rating>84){
+            if(item?._itemPriceLimits?.maximum){
+                return item?._itemPriceLimits?.maximum
+            }
+            else {return sbcPrice *1.5}
+        }
+        if(item.concept){
+            return conceptPremium * sbcPrice
+        }
+        sbcPrice = sbcPrice - (100 - item.rating) //Rating Discount
+
+
+        sbcPrice = sbcPrice * (duplicateIds.includes(item.id) ? duplicateDiscount : 1) // Dupe Discount
+
+
+        sbcPrice = sbcPrice * (item.untradeable ? untradeableDiscount : 1)
+
+
+        return sbcPrice
+    }
     const solveSBC = async (sbcId,challengeId,autoSubmit = false,repeat=null,autoOpen=false) => {
         counter = null
         counter = new Counter('.numCounter', {direction:'rtl', delay:200, digits:3})
@@ -757,13 +805,8 @@
                 groups: item.groups,
                 isFixed: isItemFixed(item),
                 concept: item.concept,
-                price:
-                (getPrice(item) *
-                 (duplicateIds.includes(item.id) ? duplicateDiscount : 1) *
-                 (item.untradeable ? untradeableDiscount : 1) *
-                 (isItemFixed(item) ? 0 : 1) *
-                 (item.concept ? conceptPremium : 1)) -
-                (100 - item.rating),
+                price: getSBCPrice(item,duplicateIds),
+                futBinPrice:getPrice(item)
             };
         });
 
@@ -772,7 +815,7 @@
             sbcData: sbcData,
             maxSolveTime:getSettings(sbcId,sbcData.challengeId,'maxSolveTime')
         });
-        console.log('Sending SBC to Solve...');
+        console.log('Sending SBC to Solve...',backendPlayersInput);
         count = getSettings(sbcId,sbcData.challengeId,'maxSolveTime')
         showLoader(true);
         let countDownInterval = setInterval(countDown, 1000)
@@ -834,7 +877,7 @@
         _squad.setPlayers(_solutionSquad, true);
 
         await loadChallenge(_challenge);
-       let autoSubmitId=getSettings(sbcId,sbcData.challengeId,'autoSubmit')
+        let autoSubmitId=getSettings(sbcId,sbcData.challengeId,'autoSubmit')
         if (((solution.status_code == autoSubmitId) || autoSubmitId==1) && autoSubmit) {
 
             await	sbcSubmit(_challenge, sbcSet);
@@ -845,10 +888,10 @@
             }
             console.log(repeat,'repeatCount',sbcData)
             if (repeat!=0) {
-              let newRepeat=sbcData.finalSBC?repeat-1:repeat
-                   solveSBC(sbcId,0,true,newRepeat)
-                }
-        }
+                let newRepeat=sbcData.finalSBC?repeat-1:repeat
+                solveSBC(sbcId,0,true,newRepeat)
+            }
+            goToPacks()       }
         else{
             let showSBC = new UTSBCSquadSplitViewController
             showSBC.initWithSBCSet(sbcSet, sbcData.challengeId)
@@ -870,6 +913,7 @@
                                 UINotificationType.NEGATIVE
                             );
                         }
+                        hideLoader();
                         return;
                     }
 
@@ -880,41 +924,41 @@
 
         //getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().pushViewController(currentView);
 
-        hideLoader();
+
 
     };
 
+    const goToPacks = async () => {
+        await sendUnassignedtoTeam();
+        let ulist = await fetchUnassigned();
 
+        if (ulist.length>0){
+            goToUnassignedView()
+        }
+        repositories.Store.setDirty()
+        let n = new UTStorePackViewController
+        n.init()
+        getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().pushViewController(n);
+    }
     const goToUnassignedView   = async ()=> {
         await sendUnassignedtoTeam();
-        function H8(e, t) {
-            var i;
-            e.unobserve(r);
-            var o = r.getNavigationController();
-            console.log(o)
-            if (o) {
-                var n = isPhone() ? new UTUnassignedItemsViewController : new UTUnassignedItemsSplitViewController;
-                t.success && JSUtils.isObject(t.response) ? n.initWithItems(null !== (i = t.response.items) && void 0 !== i ? i : []) : NetworkErrorManager.checkCriticalStatus(t.status) ? NetworkErrorManager.handleStatus(t.status) : n.init(),
-                    s && n.setStadiumViewModel(new UTMyStadiumViewModel(s)),
-                    o.pushViewController(n)
-            }
-            gClickShield.hideShield(EAClickShieldView.Shield.LOADING),
-                a.setInteractionState(!0)
-        }
         var r = getAppMain()
         .getRootViewController()
         .getPresentedViewController()
         .getCurrentViewController()
-        ._rootController.getRootNavigationController()
-        , a = r.getView()
-        , s = null;
-        a.setInteractionState(!1),
-            gClickShield.showShield(EAClickShieldView.Shield.LOADING),
-            services.MyStadium.getStadium().observe(this, function(e, t) {
+        ._rootController;
+        gClickShield.showShield(EAClickShieldView.Shield.LOADING),
+            services.Item.requestUnassignedItems().observe(this, function(e, t) {
             var i;
-            e.unobserve(r),
-                t.success && (null === (i = t.data) || void 0 === i ? void 0 : i.stadium) && (s = t.data.stadium),
-                services.Item.requestUnassignedItems().observe(r, H8)
+            e.unobserve(r);
+            var o = r.getRootNavigationController();
+            if (o) {
+                var n = isPhone() ? new UTUnassignedItemsViewController : new UTUnassignedItemsSplitViewController;
+                t.success && JSUtils.isObject(t.response) ? n.initWithItems(null === (i = t.response) || void 0 === i ? void 0 : i.items) : n.init(),
+                    services.Item.clearTransferMarketCache(),
+                    o.pushViewController(n)
+            }
+            gClickShield.hideShield(EAClickShieldView.Shield.LOADING)
         })
     }
     const getPacks= async ()=>{
@@ -958,6 +1002,14 @@
 
         }
     }
+    const unassignedItemsOverride = () =>{
+        const unassignedView = UTUnassignedItemsView.init
+        UTUnassignedItemsView.init = async function (...args) {
+            await sendUnassignedtoTeam();
+            unassignedView.call(this, ...args);
+
+        }
+    }
     const sbcSubmit = async function (challenge,sbcSet,i) {
         return new Promise((resolve, reject) => {
 
@@ -970,7 +1022,7 @@
                             'Failed to submit',
                             UINotificationType.NEGATIVE
                         );
-                         gClickShield.hideShield(EAClickShieldView.Shield.LOADING)
+                        gClickShield.hideShield(EAClickShieldView.Shield.LOADING)
                         reject(res);
 
                     } else {
@@ -1155,7 +1207,7 @@
         const UTPlayerItemView_renderItem = UTPlayerItemView.prototype.renderItem;
         UTPlayerItemView.prototype.renderItem = async function (item, t) {
             const result = UTPlayerItemView_renderItem.call(this, item, t);
-           
+
             const duplicateIds = await fetchDuplicateIds()
             if (duplicateIds.includes(item.id)){this.__root.style.opacity = "0.4";}
             if (getPrice(item) && getSettings(0,0,'showPrices')) {
@@ -1187,27 +1239,34 @@
     let cachedPriceItems;
 
     let getPrice = function (item) {
+
         let PriceItems = getPriceItems();
-        let expiryTimeStamp = new Date(
-            PriceItems[item.definitionId]?.expiryTimeStamp
+        let cacheMin = item.concept ? 1440 : getSettings(0,0,'priceCacheMinutes')
+        let timeStamp = new Date(
+            PriceItems[item.definitionId]?.timeStamp
         );
+        let now = new Date(Date.now())
+        let cacheDate = timeStamp.getTime() + (cacheMin * 60 * 1000);
+
         if (
             PriceItems[item.definitionId] &&
-            PriceItems[item.definitionId]?.expiryTimeStamp &&
-            expiryTimeStamp < Date.now()
+            PriceItems[item.definitionId]?.timeStamp  &&
+            cacheDate < now
         ) {
+
             return null;
         }
-        return PriceItems[item.definitionId]?.price;
+        let fbPrice=PriceItems[item.definitionId]?.price
+        return fbPrice;
     };
 
-    let PriceItem = function (item, price, expiryDate) {
+    let PriceItem = function (item, price, lastUpdated=null) {
         let PriceItems = getPriceItems();
-        let expiryTimeStamp =
-            expiryDate || new Date(Date.now() + priceCacheMinutes * 60 * 1000);
+        let timeStamp = new Date(Date.now() );
         PriceItems[item.definitionId] = {
-            expiryTimeStamp: expiryTimeStamp,
+            timeStamp: timeStamp,
             price: price,
+            lastUpdated:lastUpdated
         };
         savePriceItems();
     };
@@ -1290,6 +1349,16 @@
         return number * 1;
     };
     const fetchLowestPriceByRating = async () => {
+        let PriceItems = getPriceItems();
+        for (let i=45;i<=80;i++){
+            PriceItem(
+                {
+                    "definitionId":i + '_CBR',
+                },
+                i<75?200:400
+            )
+        }
+
         const futBinCheapestByRatingResponse = await makeGetRequest(
             `https://www.futbin.com/home-tab/cheapest-by-rating`
 		);
@@ -1311,11 +1380,14 @@
                 )
             );
         };
+
     };
     const fetchPlayerPrices = async (players) => {
         const idsArray = players
-        .filter((f) => getPrice(f) == null)
+        .filter((f) => getPrice(f) == null )
         .map((p) => p.definitionId);
+        console.log(players.filter((f) => getPrice(f) == null)
+                   )
         if(idsArray.length>1){
             showNotification(
                 `Fetching ${idsArray.length} Prices`,
@@ -1335,8 +1407,9 @@
             let priceResponse;
             try {
                 priceResponse = JSON.parse(futBinResponse);
+                console.log(`https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`,priceResponse);
             } catch (error) {
-                console.log(futBinResponse);
+                console.log(`https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`,futBinResponse);
                 console.error(error);
                 await wait();
                 continue;
@@ -1351,55 +1424,23 @@
                 }
                 let cardPrice = parseInt(lcPrice.replace(/[,.]/g, ''));
                 let player = players.filter((f) => f.definitionId == id)[0];
-                if (cardPrice == 0) {
-                    console.log(prices, player);
 
-                    if (!prices.updated) {
-                        await fetchPlayerPrices(
-                            players.filter((f) => f.definitionId == id)
-                        );
-                        continue;
-                    }
-                    const maxPrice =
-                          player._itemPriceLimits?.maximum ||
-                          parseInt(prices.MaxPrice.replace(/[,.]/g, ''));
-                    const minPrice =
-                          player._itemPriceLimits?.minimum ||
-                          parseInt(prices.MinPrice.replace(/[,.]/g, ''));
-                    const cbrPrice = getPrice({ definitionId: player.rating + '_CBR' });
+                if (cardPrice == 0 && !prices.updated) {
 
-                    cardPrice = maxPrice;
+                    await fetchPlayerPrices(
+                        players.filter((f) => f.definitionId == id)
+                    )
 
-                    if (prices.updated == 'Never' || prices.updated.includes('week')) {
 
-                        //never indicates its not on the market so give it the lowest price of the rating with a premium
-                        cardPrice = player.isSpecial() && player.rating > 81
-                            ? cbrPrice * 1.5
-                        : minPrice;
-                        PriceItem(
-                            player,
-                            cardPrice,
-                            player.isSpecial()
-                            ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-                            : new Date(Date.now() + 24 * 60 * 60 * 1000)
-                        );
-                        continue
-                    }
-
-                }
-                if (player.concept) {
+                } else{
                     PriceItem(
                         player,
                         cardPrice,
-                        player.isSpecial()
-                        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-                        : new Date(Date.now() + 24 * 60 * 60 * 1000)
+                        prices?.updated
                     );
-                } else {
-                    PriceItem(player, cardPrice);
                 }
+                await wait(0.2)
             }
-            await wait();
         }
     };
 
@@ -1458,7 +1499,7 @@
         appendSquadTotal(total);
     };
     const appendSquadTotal = (total) => {
-       
+
         if(getSettings(0,0,'showPrices')){
             if ($('.squadTotal').length) {
                 $('.squadTotal').text(total.toLocaleString());
@@ -1476,7 +1517,7 @@
         }
     };
     const appendPriceToSlot = (rootElement, price) => {
-       
+
         if(getSettings(0,0,'showPrices')){
             rootElement.prepend(
                 createElem(
@@ -1540,7 +1581,7 @@
             sbcBtns.appendChild(btn)
 
             $('#' + e.id).click(async function () {
-                 createSBCTab();
+                createSBCTab();
                 services.Notification.queue([
                     e.name + ' SBC Started',
                     UINotificationType.POSITIVE,
@@ -1589,7 +1630,7 @@
     };
 
 
- 
+
 
     const generateSbcSolveTab = () => {
         const sbcSolveTab = new UTTabBarItemView();
@@ -1613,7 +1654,7 @@
     sbcSettingsController.prototype.viewDidAppear = function () {
         this.getNavigationController().setNavigationVisibility(true, true);
     };
-     sbcSettingsController.prototype.viewWillDisappear  = function () {
+    sbcSettingsController.prototype.viewWillDisappear  = function () {
         this.getNavigationController().setNavigationVisibility(false, false);
     };
     sbcSettingsController.prototype.getNavigationTitle = function () {
@@ -1629,7 +1670,7 @@
 
     sbcSettingsView.prototype._generate = function _generate() {
 
-       
+
 
         if (!this._generated) {
             var e = document.createElement("div");
@@ -1652,8 +1693,13 @@
             f.appendChild(g)
             let sbcUITile = createSettingsTile(f,'Customise UI','ui')
             createToggle(sbcUITile,'Show Prices','showPrices',getSettings(0,0,'showPrices'),(toggleSP)=>{
-                  saveSettings(0,0,'showPrices',toggleSP.getToggleState())
-                })
+                saveSettings(0,0,'showPrices',toggleSP.getToggleState())
+            })
+            let panel = createPanel()
+            let clearPricesBtn = createButton('clearPrices','Clear All Prices',()=>{cachedPriceItems=null;localStorage.removeItem(PRICE_ITEMS_KEY)})
+            panel.appendChild(clearPricesBtn)
+            sbcUITile.appendChild(panel)
+
             let sbcRulesTile = createSettingsTile(f,'Customise SBC','customRules')
             createSBCCustomRulesPanel(sbcRulesTile)
 
@@ -1678,7 +1724,7 @@
                        SBCList,
                        '1',
                        async (dropdown)=>{
-           
+
             if (document.contains(document.getElementsByClassName('ut-sbc-challenge-requirements-view')[0])){
                 document.getElementsByClassName('ut-sbc-challenge-requirements-view')[0].remove()
             }
@@ -1705,27 +1751,27 @@
                                [{name:'Always',id:1},
                                 {name:'Optimal',id:4},
                                 {name:'Never',id:0}].map(e=>
-                                                               new UTDataProviderEntryDTO(e.id,e.id,e.name)
-                                                              ),
+                                                         new UTDataProviderEntryDTO(e.id,e.id,e.name)
+                                                        ),
                                getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'autoSubmit'),
                                (dropdownAS)=>{
-                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'autoSubmit',parseInt(dropdownAS.getValue()))
+                    saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'autoSubmit',parseInt(dropdownAS.getValue()))
                 })
                 createNumberSpinner(sbcParamsTile,'Repeat Count (-1 repeats infinitely)','repeatCount',-1,100,getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'repeatCount'), (numberspinnerRC)=>{
-                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'repeatCount',numberspinnerRC.getValue())
+                    saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'repeatCount',numberspinnerRC.getValue())
                 })
 
                 createToggle(sbcParamsTile,'Use Concepts','useConcepts',getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useConcepts'),(toggleUC)=>{
-                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useConcepts',toggleUC.getToggleState())
+                    saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useConcepts',toggleUC.getToggleState())
                 })
                 createNumberSpinner(sbcParamsTile,'Player Max Rating','maxRating',48,99,getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxRating'),(numberspinnerMR)=>{
-                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxRating',numberspinnerMR.getValue())
+                    saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxRating',numberspinnerMR.getValue())
                 })
-                 createToggle(sbcParamsTile,'Ignore Max Rating for Duplicates','useDupes',getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useDupes'),(toggleUD)=>{
-                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useDupes',toggleUD.getToggleState())
+                createToggle(sbcParamsTile,'Ignore Max Rating for Duplicates','useDupes',getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useDupes'),(toggleUD)=>{
+                    saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useDupes',toggleUD.getToggleState())
                 })
                 createNumberSpinner(sbcParamsTile,'API Max Solve Time','maxSolveTime',10,990,getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxSolveTime'),(numberspinnerMST)=>{
-                  saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxSolveTime',numberspinnerMST.getValue())
+                    saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxSolveTime',numberspinnerMST.getValue())
                 })
 
 
@@ -1733,7 +1779,7 @@
         })
     }
     const saveSettings = (sbc,challenge,id,value) =>{
-            let settings = getSolverSettings()
+        let settings = getSolverSettings()
         settings['sbcSettings']??={}
         let sbcSettings=settings['sbcSettings']
         sbcSettings[sbc]??={}
@@ -1743,12 +1789,12 @@
         setSolverSettings('sbcSettings',sbcSettings)
     }
     const getSettings = (sbc,challenge,id)=>{
-         let settings = getSolverSettings()
-     let returnValue = settings['sbcSettings']?.[sbc]?.[challenge]?.[id] ?? settings['sbcSettings']?.[sbc]?.[0]?.[id] ?? settings['sbcSettings']?.[0]?.[0]?.[id]
-     return returnValue
+        let settings = getSolverSettings()
+        let returnValue = settings['sbcSettings']?.[sbc]?.[challenge]?.[id] ?? settings['sbcSettings']?.[sbc]?.[0]?.[id] ?? settings['sbcSettings']?.[0]?.[0]?.[id]
+        return returnValue
 
     }
-       const defaultSBCSolverSettings = {
+    const defaultSBCSolverSettings = {
         apiUrl: 'http://127.0.0.1:8000/solve',
         useConcepts: false,
         autoSubmit:0,
@@ -1760,8 +1806,8 @@
         useDupes:true
     };
     const initDefaultSettings=()=>{
-      Object.keys(defaultSBCSolverSettings).forEach(id=>
-       saveSettings(0,0,id, getSettings(0,0,id)??defaultSBCSolverSettings[id]))
+        Object.keys(defaultSBCSolverSettings).forEach(id=>
+                                                      saveSettings(0,0,id, getSettings(0,0,id)??defaultSBCSolverSettings[id]))
     }
     const createPanel=()=>{
         var panel = document.createElement("div");
@@ -1814,7 +1860,7 @@
         panel.appendChild(dropdown.getRootElement())
         panel.setAttribute("id",id);
         dropdown.init()
-        
+
         dropdown.setOptions(options)
 
         dropdown.addTarget(dropdown,target, EventType.CHANGE)
@@ -1830,7 +1876,7 @@
 
         panel.appendChild(toggle.getRootElement())
         toggle.init()
-        
+
         if(value){
             toggle.toggle()
         }
