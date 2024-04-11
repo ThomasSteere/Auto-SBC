@@ -1247,11 +1247,11 @@
         );
         let now = new Date(Date.now())
         let cacheDate = timeStamp.getTime() + (cacheMin * 60 * 1000);
-
+        let updated = PriceItems[item.definitionId]?.updated ?? 'Unknown'
         if (
             PriceItems[item.definitionId] &&
             PriceItems[item.definitionId]?.timeStamp  &&
-            cacheDate < now
+            cacheDate < now && updated!='Never' && updated.indexOf('weeks')<0
         ) {
 
             return null;
