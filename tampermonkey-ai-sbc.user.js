@@ -630,18 +630,21 @@
         }
 
         let challenges = await getChallenges(sbcSet[0])
-        let uncompletedChallenges=[]
-        if (challengeId == 0) {
+        let awards=[]
+        let uncompletedChallenges= challenges?.challenges.filter(
+            (f) => f.status != 'COMPLETED'
+        );
+        if(uncompletedChallenges.length==0){
+            showNotification('SBC not available', UINotificationType.NEGATIVE);
+            createSBCTab();
+            return null
+        }
+        if(uncompletedChallenges.length==1){
+            awards=sbcSet[0].awards.filter(f=>f.type=='pack').map(m=>m.value)}
 
+        if (challengeId == 0) {
             //Get last/hardest SBC if no challenge given
-            uncompletedChallenges = challenges?.challenges.filter(
-                (f) => f.status != 'COMPLETED'
-            );
-            if(uncompletedChallenges.length==0){
-                showNotification('SBC not available', UINotificationType.NEGATIVE);
-                createSBCTab();
-                return null
-            }
+
             challengeId = uncompletedChallenges[uncompletedChallenges.length - 1].id;
         }
 
@@ -661,9 +664,11 @@
                     count: eligibility.count,
                     requirementKey: SBCEligibilityKey[keys[0]],
                     eligibilityValues: eligibility.kvPairs._collection[keys[0]],
+
                 };
             }
         );
+
         return {
             constraints: challengeRequirements,
             formation: _challenge.squad._formation.generalPositions.map((m, i) =>
@@ -676,6 +681,7 @@
             currentSolution: _challenge.squad._players.map(
                 (m) => m._item._metaData?.id
             ).slice(0,11),
+            awards:_challenge.awards.filter(f=>f.type=='pack').map(m=>m.value).concat(awards)
         };
     };
     let conceptPlayers;
@@ -879,276 +885,212 @@
         await loadChallenge(_challenge);
         let autoSubmitId=getSettings(sbcId,sbcData.challengeId,'autoSubmit')
         if (((solution.status_code == autoSubmitId) || autoSubmitId==1) && autoSubmit) {
-
             await	sbcSubmit(_challenge, sbcSet);
-            if (repeat==null){
-                console.log('getRepeatCount')
-                repeat=getSettings(sbcId,sbcData.challengeId,'repeatCount')
+            if (getSettings(sbcId,sbcData.challengeId,'autoOpenPacks')){
+                console.log('Awards',sbcData.awards)
+                repositories.Store.setDirty()
+                let packs = await getPacks()
+                
+                sbcData.awards.forEach(async function (item, index){
+                    console.log('Opening Pack',item,packs.packs.filter(f=>f.id==item)[0])
+                    hideLoader();
+                    await openPack(packs.packs.filter(f=>f.id==item)[0])
+                    goToUnassignedView()
+                   
+                    await wait(10)
+                })
+                 
+            }
+                if (repeat==null){
+                    console.log('getRepeatCount')
+                    repeat=getSettings(sbcId,sbcData.challengeId,'repeatCount')
 
+                }
+                console.log(repeat,'repeatCount',sbcData)
+                if (repeat!=0) {
+                    let newRepeat=sbcData.finalSBC?repeat-1:repeat
+                    solveSBC(sbcId,0,true,newRepeat)
+                }
+            if (!getSettings(sbcId,sbcData.challengeId,'autoOpenPacks')){
+                console.log('going to packs')
+                goToPacks()
             }
-            console.log(repeat,'repeatCount',sbcData)
-            if (repeat!=0) {
-                let newRepeat=sbcData.finalSBC?repeat-1:repeat
-                solveSBC(sbcId,0,true,newRepeat)
             }
-            goToPacks()       }
-        else{
-            let showSBC = new UTSBCSquadSplitViewController
-            showSBC.initWithSBCSet(sbcSet, sbcData.challengeId)
-            getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().popViewController();
-            getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().pushViewController(showSBC);
-            services.SBC.saveChallenge(_challenge).observe(
-                undefined,
-                async function (sender, data) {
-                    if (!data.success) {
-                        showNotification(
-                            'Failed to save squad.',
-                            UINotificationType.NEGATIVE
-                        );
-                        _squad.removeAllItems();
-                        hideLoader();
-                        if (data.error) {
+            else{
+                let showSBC = new UTSBCSquadSplitViewController
+                showSBC.initWithSBCSet(sbcSet, sbcData.challengeId)
+                getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().popViewController();
+                getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().pushViewController(showSBC);
+                services.SBC.saveChallenge(_challenge).observe(
+                    undefined,
+                    async function (sender, data) {
+                        if (!data.success) {
                             showNotification(
-                                `Error code: ${data.error.code}`,
+                                'Failed to save squad.',
                                 UINotificationType.NEGATIVE
                             );
+                            _squad.removeAllItems();
+                            hideLoader();
+                            if (data.error) {
+                                showNotification(
+                                    `Error code: ${data.error.code}`,
+                                    UINotificationType.NEGATIVE
+                                );
+                            }
+                            hideLoader();
+                            return;
                         }
-                        hideLoader();
-                        return;
+
                     }
-
-                }
-            );
-        }
-
-
-        //getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().pushViewController(currentView);
-
-
-
-    };
-
-    const goToPacks = async () => {
-        await sendUnassignedtoTeam();
-        let ulist = await fetchUnassigned();
-
-        if (ulist.length>0){
-            goToUnassignedView()
-        }
-        repositories.Store.setDirty()
-        let n = new UTStorePackViewController
-        n.init()
-        getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().pushViewController(n);
-    }
-    const goToUnassignedView   = async ()=> {
-        await sendUnassignedtoTeam();
-        var r = getAppMain()
-        .getRootViewController()
-        .getPresentedViewController()
-        .getCurrentViewController()
-        ._rootController;
-        gClickShield.showShield(EAClickShieldView.Shield.LOADING),
-            services.Item.requestUnassignedItems().observe(this, function(e, t) {
-            var i;
-            e.unobserve(r);
-            var o = r.getRootNavigationController();
-            if (o) {
-                var n = isPhone() ? new UTUnassignedItemsViewController : new UTUnassignedItemsSplitViewController;
-                t.success && JSUtils.isObject(t.response) ? n.initWithItems(null === (i = t.response) || void 0 === i ? void 0 : i.items) : n.init(),
-                    services.Item.clearTransferMarketCache(),
-                    o.pushViewController(n)
+                );
             }
-            gClickShield.hideShield(EAClickShieldView.Shield.LOADING)
-        })
-    }
-    const getPacks= async ()=>{
-        return new Promise((resolve, reject) => {
-            // Search in the club
-            services.Store.getPacks('ALL',true,true).observe(this, async function (obs, res) {
-                if (!res.success) {
-                    obs.unobserve(this);
-                    reject(res.status);
-                } else {
-                    console.log(res)
-                    resolve(res.response)
 
-                }
-            });
-        });
-    }
 
-    const refreshPacks = async ()=>{
-        return new Promise((resolve, reject) => {
-            // Search in the club
+            //getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().pushViewController(currentView);
 
-            UTStoreViewController.prototype.getStorePacks().observe(this, async function (obs, res) {
-                if (!res.success) {
-                    obs.unobserve(this);
-                    reject(res.status);
-                } else {
-                    console.log(res)
-                    resolve(res.response)
 
-                }
-            });
-        });
-    }
 
-    const sbcSubmitChallengeOverride = () => {
-        const sbcSubmit =   UTSBCSquadSplitViewController._submitChallenge
-        UTSBCSquadSplitViewController._submitChallenge = function (...args) {
-            sbcSubmit.call(this, ...args);
-            createSBCTab()
+        };
 
-        }
-    }
-    const unassignedItemsOverride = () =>{
-        const unassignedView = UTUnassignedItemsView.init
-        UTUnassignedItemsView.init = async function (...args) {
+        const goToPacks = async () => {
             await sendUnassignedtoTeam();
-            unassignedView.call(this, ...args);
+            let ulist = await fetchUnassigned();
 
+            if (ulist.length>0){
+                goToUnassignedView()
+            }
+            repositories.Store.setDirty()
+            let n = new UTStorePackViewController
+            n.init()
+            getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController()._rootController.getRootNavigationController().pushViewController(n);
         }
-    }
-    const sbcSubmit = async function (challenge,sbcSet,i) {
-        return new Promise((resolve, reject) => {
-
-            services.SBC.submitChallenge(challenge, sbcSet, true,services.Chemistry.isFeatureEnabled()).observe(
-                this,
-                async function (obs, res) {
+        const goToUnassignedView   = async ()=> {
+            repositories.Item.unassigned.clear();
+            repositories.Item.unassigned.reset();
+            var r = getAppMain()
+            .getRootViewController()
+            .getPresentedViewController()
+            .getCurrentViewController()
+            ._rootController;
+            gClickShield.showShield(EAClickShieldView.Shield.LOADING),
+                services.Item.requestUnassignedItems().observe(this, function(e, t) {
+                var i;
+                e.unobserve(r);
+                var o = r.getRootNavigationController();
+                if (o) {
+                    var n = isPhone() ? new UTUnassignedItemsViewController : new UTUnassignedItemsSplitViewController;
+                    t.success && JSUtils.isObject(t.response) ? n.initWithItems(null === (i = t.response) || void 0 === i ? void 0 : i.items) : n.init(),
+                        services.Item.clearTransferMarketCache(),
+                        o.pushViewController(n)
+                }
+                gClickShield.hideShield(EAClickShieldView.Shield.LOADING)
+            })
+        }
+        const getPacks= async ()=>{
+            return new Promise((resolve, reject) => {
+                repositories.Store.setDirty()
+                services.Store.getPacks('ALL',true,true).observe(this, async function (obs, res) {
                     if (!res.success) {
                         obs.unobserve(this);
-                        showNotification(
-                            'Failed to submit',
-                            UINotificationType.NEGATIVE
-                        );
-                        gClickShield.hideShield(EAClickShieldView.Shield.LOADING)
-                        reject(res);
-
+                        reject(res.status);
                     } else {
-                        showNotification(
-                            'SBC Submitted',
-                            UINotificationType.POSITIVE
-                        );
-                        createSBCTab()
-                        resolve(res);
+                        resolve(res.response)
                     }
-                }
-            );
-        });
-    };
-
-    const sbcViewOverride = () => {
-        const squadDetailPanelView = UTSBCSquadDetailPanelView.prototype.init;
-        UTSBCSquadDetailPanelView.prototype.init = function (...args) {
-            const response = squadDetailPanelView.call(this, ...args);
-
-            const button = createButton('idSolveSbc', 'Solve SBC', async function () {
-                const { _challenge } = getControllerInstance();
-
-                solveSBC(_challenge.setId, _challenge.id);
+                });
             });
-            insertAfter(button, this._btnExchange.__root);
-            return response;
-        };
-    };
-    const sbcButtonOverride = () => {
-        const UTSBCSetTileView_render = UTSBCSetTileView.prototype.render;
-        UTSBCSetTileView.prototype.render = function render() {
-            UTSBCSetTileView_render.call(this);
-            if (this.data) {
-                insertBefore(
-                    createElem('span', null, `COMPLETED: ${this.data.timesCompleted}. `),
-                    this.__rewardsHeader
-                );
-            }
-        };
-    };
+        }
 
-    const lockedLabel = 'SBC Unlock';
-    const unlockedLabel = 'SBC Lock';
-    const fixedLabel = 'SBC Use actual prices';
-    const unfixedLabel = 'SBC Set Price to Zero';
+        const sbcSubmitChallengeOverride = () => {
+            const sbcSubmit =  PopupQueueViewController.prototype.closeActivePopup
+           PopupQueueViewController.prototype.closeActivePopup  = function () {
+                sbcSubmit.call(this);
+                createSBCTab()
 
-    const playerItemOverride = () => {
-        const UTDefaultSetItem = UTSlotActionPanelView.prototype.setItem;
-        UTSlotActionPanelView.prototype.setItem = function (e, t) {
-            const result = UTDefaultSetItem.call(this, e, t);
-            // Concept player
-            if (e.concept || e.isLoaned() || !e.isPlayer() || !e.id) {
-                return result;
             }
-            if (!e.isDuplicate() && !isItemFixed(e)) {
-                const label = isItemLocked(e) ? lockedLabel : unlockedLabel;
-                const button = new UTGroupButtonControl();
-                button.init();
-                button.setInteractionState(true);
-                button.setText(label);
-                insertBefore(button, this._btnPlayerBio.__root);
-                button.addTarget(
+        }
+        const unassignedItemsOverride = () =>{
+            const unassignedView = UTUnassignedItemsView.init
+            UTUnassignedItemsView.init = async function (...args) {
+                await sendUnassignedtoTeam();
+                unassignedView.call(this, ...args);
+
+            }
+        }
+        const sbcSubmit = async function (challenge,sbcSet,i) {
+            return new Promise((resolve, reject) => {
+
+                services.SBC.submitChallenge(challenge, sbcSet, true,services.Chemistry.isFeatureEnabled()).observe(
                     this,
-                    async () => {
-                        if (isItemLocked(e)) {
-                            unlockItem(e);
-                            button.setText(unlockedLabel);
-                            showNotification(`Item unlocked`, UINotificationType.POSITIVE);
+                    async function (obs, res) {
+                        if (!res.success) {
+                            obs.unobserve(this);
+                            showNotification(
+                                'Failed to submit',
+                                UINotificationType.NEGATIVE
+                            );
+                            gClickShield.hideShield(EAClickShieldView.Shield.LOADING)
+                            reject(res);
+
                         } else {
-                            lockItem(e);
-                            button.setText(lockedLabel);
-                            showNotification(`Item locked`, UINotificationType.POSITIVE);
+                            showNotification(
+                                'SBC Submitted',
+                                UINotificationType.POSITIVE
+                            );
+                            createSBCTab()
+                            resolve(res);
                         }
-                        getControllerInstance().applyDataChange();
-                        getCurrentViewController()
-                            .getCurrentController()
-                            ._rightController._currentController._renderView();
-                    },
-                    EventType.TAP
+                    }
                 );
-            }
-            if (!isItemLocked(e)) {
-                const fixLabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
-                const fixbutton = new UTGroupButtonControl();
-                fixbutton.init();
-                fixbutton.setInteractionState(true);
-                fixbutton.setText(fixLabel);
-                insertBefore(fixbutton, this._btnPlayerBio.__root);
-                fixbutton.addTarget(
-                    this,
-                    async () => {
-                        if (isItemFixed(e)) {
-                            unfixItem(e);
-                            fixbutton.setText(unfixedLabel);
-                            showNotification(`Removed Must Use`, UINotificationType.POSITIVE);
-                        } else {
-                            fixItem(e);
-                            fixbutton.setText(fixedLabel);
-                            showNotification(`Must Use Set`, UINotificationType.POSITIVE);
-                        }
-                        getControllerInstance().applyDataChange();
-                        getCurrentViewController()
-                            .getCurrentController()
-                            ._rightController._currentController._renderView();
-                    },
-                    EventType.TAP
-                );
-            }
-            return result;
+            });
         };
-        const UTDefaultAction = UTDefaultActionPanelView.prototype.render;
-        UTDefaultActionPanelView.prototype.render = function (e, t, i, o, n, r, s) {
-            const result = UTDefaultAction.call(this, e, t, i, o, n, r, s);
-            // Concept player
-            if (e.concept || e.isLoaned() || !e.isPlayer() || !e.id) {
-                return result;
-            }
-            if (!e.isDuplicate() && !isItemFixed(e)) {
-                const label = isItemLocked(e) ? lockedLabel : unlockedLabel;
-                if (!this.lockUnlockButton) {
+
+        const sbcViewOverride = () => {
+            const squadDetailPanelView = UTSBCSquadDetailPanelView.prototype.init;
+            UTSBCSquadDetailPanelView.prototype.init = function (...args) {
+                const response = squadDetailPanelView.call(this, ...args);
+
+                const button = createButton('idSolveSbc', 'Solve SBC', async function () {
+                    const { _challenge } = getControllerInstance();
+
+                    solveSBC(_challenge.setId, _challenge.id);
+                });
+                insertAfter(button, this._btnExchange.__root);
+                return response;
+            };
+        };
+        const sbcButtonOverride = () => {
+            const UTSBCSetTileView_render = UTSBCSetTileView.prototype.render;
+            UTSBCSetTileView.prototype.render = function render() {
+                UTSBCSetTileView_render.call(this);
+                if (this.data) {
+                    insertBefore(
+                        createElem('span', null, `COMPLETED: ${this.data.timesCompleted}. `),
+                        this.__rewardsHeader
+                    );
+                }
+            };
+        };
+
+        const lockedLabel = 'SBC Unlock';
+        const unlockedLabel = 'SBC Lock';
+        const fixedLabel = 'SBC Use actual prices';
+        const unfixedLabel = 'SBC Set Price to Zero';
+
+        const playerItemOverride = () => {
+            const UTDefaultSetItem = UTSlotActionPanelView.prototype.setItem;
+            UTSlotActionPanelView.prototype.setItem = function (e, t) {
+                const result = UTDefaultSetItem.call(this, e, t);
+                // Concept player
+                if (e.concept || e.isLoaned() || !e.isPlayer() || !e.id) {
+                    return result;
+                }
+                if (!e.isDuplicate() && !isItemFixed(e)) {
+                    const label = isItemLocked(e) ? lockedLabel : unlockedLabel;
                     const button = new UTGroupButtonControl();
                     button.init();
                     button.setInteractionState(true);
                     button.setText(label);
-                    insertBefore(button, this._playerBioButton.__root);
+                    insertBefore(button, this._btnPlayerBio.__root);
                     button.addTarget(
                         this,
                         async () => {
@@ -1161,209 +1103,273 @@
                                 button.setText(lockedLabel);
                                 showNotification(`Item locked`, UINotificationType.POSITIVE);
                             }
+                            getControllerInstance().applyDataChange();
                             getCurrentViewController()
                                 .getCurrentController()
-                                ._leftController.refreshList();
+                                ._rightController._currentController._renderView();
                         },
                         EventType.TAP
                     );
-                    this.lockUnlockButton = button;
                 }
-            }
-            if (!isItemLocked(e)) {
-                const fixlabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
-                if (!this.fixUnfixButton) {
-                    const button = new UTGroupButtonControl();
-                    button.init();
-                    button.setInteractionState(true);
-                    button.setText(fixlabel);
-                    insertBefore(button, this._playerBioButton.__root);
-                    button.addTarget(
+                if (!isItemLocked(e)) {
+                    const fixLabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
+                    const fixbutton = new UTGroupButtonControl();
+                    fixbutton.init();
+                    fixbutton.setInteractionState(true);
+                    fixbutton.setText(fixLabel);
+                    insertBefore(fixbutton, this._btnPlayerBio.__root);
+                    fixbutton.addTarget(
                         this,
                         async () => {
                             if (isItemFixed(e)) {
                                 unfixItem(e);
-                                button.setText(unfixedLabel);
-                                showNotification(
-                                    `Removed Must Use`,
-                                    UINotificationType.POSITIVE
-                                );
+                                fixbutton.setText(unfixedLabel);
+                                showNotification(`Removed Must Use`, UINotificationType.POSITIVE);
                             } else {
                                 fixItem(e);
-                                button.setText(fixedLabel);
+                                fixbutton.setText(fixedLabel);
                                 showNotification(`Must Use Set`, UINotificationType.POSITIVE);
                             }
+                            getControllerInstance().applyDataChange();
                             getCurrentViewController()
                                 .getCurrentController()
-                                ._leftController.refreshList();
+                                ._rightController._currentController._renderView();
                         },
                         EventType.TAP
                     );
-                    this.fixUnfixButton = button;
                 }
-            }
-            return result;
+                return result;
+            };
+            const UTDefaultAction = UTDefaultActionPanelView.prototype.render;
+            UTDefaultActionPanelView.prototype.render = function (e, t, i, o, n, r, s) {
+                const result = UTDefaultAction.call(this, e, t, i, o, n, r, s);
+                // Concept player
+                if (e.concept || e.isLoaned() || !e.isPlayer() || !e.id) {
+                    return result;
+                }
+                if (!e.isDuplicate() && !isItemFixed(e)) {
+                    const label = isItemLocked(e) ? lockedLabel : unlockedLabel;
+                    if (!this.lockUnlockButton) {
+                        const button = new UTGroupButtonControl();
+                        button.init();
+                        button.setInteractionState(true);
+                        button.setText(label);
+                        insertBefore(button, this._playerBioButton.__root);
+                        button.addTarget(
+                            this,
+                            async () => {
+                                if (isItemLocked(e)) {
+                                    unlockItem(e);
+                                    button.setText(unlockedLabel);
+                                    showNotification(`Item unlocked`, UINotificationType.POSITIVE);
+                                } else {
+                                    lockItem(e);
+                                    button.setText(lockedLabel);
+                                    showNotification(`Item locked`, UINotificationType.POSITIVE);
+                                }
+                                getCurrentViewController()
+                                    .getCurrentController()
+                                    ._leftController.refreshList();
+                            },
+                            EventType.TAP
+                        );
+                        this.lockUnlockButton = button;
+                    }
+                }
+                if (!isItemLocked(e)) {
+                    const fixlabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
+                    if (!this.fixUnfixButton) {
+                        const button = new UTGroupButtonControl();
+                        button.init();
+                        button.setInteractionState(true);
+                        button.setText(fixlabel);
+                        insertBefore(button, this._playerBioButton.__root);
+                        button.addTarget(
+                            this,
+                            async () => {
+                                if (isItemFixed(e)) {
+                                    unfixItem(e);
+                                    button.setText(unfixedLabel);
+                                    showNotification(
+                                        `Removed Must Use`,
+                                        UINotificationType.POSITIVE
+                                    );
+                                } else {
+                                    fixItem(e);
+                                    button.setText(fixedLabel);
+                                    showNotification(`Must Use Set`, UINotificationType.POSITIVE);
+                                }
+                                getCurrentViewController()
+                                    .getCurrentController()
+                                    ._leftController.refreshList();
+                            },
+                            EventType.TAP
+                        );
+                        this.fixUnfixButton = button;
+                    }
+                }
+                return result;
+            };
+            const UTPlayerItemView_renderItem = UTPlayerItemView.prototype.renderItem;
+            UTPlayerItemView.prototype.renderItem = async function (item, t) {
+                const result = UTPlayerItemView_renderItem.call(this, item, t);
+
+                const duplicateIds = await fetchDuplicateIds()
+                if (duplicateIds.includes(item.id)){this.__root.style.opacity = "0.4";}
+                if (getPrice(item) && getSettings(0,0,'showPrices')) {
+                    let price = getPrice(item) * (isItemFixed(item) ? 0 : 1);
+                    this.__root.prepend(
+                        createElem(
+                            'div',
+                            { className: 'currency-coins item-price' },
+                            price.toLocaleString()
+                        )
+                    );
+                }
+                if (isItemLocked(item)) {
+                    addClass(this, 'locked');
+                } else {
+                    removeClass(this, 'locked');
+                }
+                if (isItemFixed(item)) {
+                    addClass(this, 'fixed');
+                } else {
+                    removeClass(this, 'fixed');
+                }
+                return result;
+            };
         };
-        const UTPlayerItemView_renderItem = UTPlayerItemView.prototype.renderItem;
-        UTPlayerItemView.prototype.renderItem = async function (item, t) {
-            const result = UTPlayerItemView_renderItem.call(this, item, t);
 
-            const duplicateIds = await fetchDuplicateIds()
-            if (duplicateIds.includes(item.id)){this.__root.style.opacity = "0.4";}
-            if (getPrice(item) && getSettings(0,0,'showPrices')) {
-                let price = getPrice(item) * (isItemFixed(item) ? 0 : 1);
-                this.__root.prepend(
-                    createElem(
-                        'div',
-                        { className: 'currency-coins item-price' },
-                        price.toLocaleString()
-                    )
-                );
+        let priceCacheMinutes = 60;
+        let PRICE_ITEMS_KEY = 'futbinprices';
+        let cachedPriceItems;
+
+        let getPrice = function (item) {
+
+            let PriceItems = getPriceItems();
+            let cacheMin = item.concept ? 1440 : getSettings(0,0,'priceCacheMinutes')
+            let timeStamp = new Date(
+                PriceItems[item.definitionId]?.timeStamp
+            );
+            let now = new Date(Date.now())
+            let cacheDate = timeStamp.getTime() + (cacheMin * 60 * 1000);
+            let updated = PriceItems[item.definitionId]?.updated ?? 'Unknown'
+            if (updated!='Never' || updated.indexOf('weeks')<0){
+                return PriceItems[item.definitionId]?.price
             }
-            if (isItemLocked(item)) {
-                addClass(this, 'locked');
-            } else {
-                removeClass(this, 'locked');
+            if (
+                PriceItems[item.definitionId] &&
+                PriceItems[item.definitionId]?.timeStamp  &&
+                cacheDate < now
+            ) {
+
+                return null;
             }
-            if (isItemFixed(item)) {
-                addClass(this, 'fixed');
-            } else {
-                removeClass(this, 'fixed');
-            }
-            return result;
+            let fbPrice=PriceItems[item.definitionId]?.price
+            return fbPrice;
         };
-    };
 
-    let priceCacheMinutes = 60;
-    let PRICE_ITEMS_KEY = 'futbinprices';
-    let cachedPriceItems;
-
-    let getPrice = function (item) {
-
-        let PriceItems = getPriceItems();
-        let cacheMin = item.concept ? 1440 : getSettings(0,0,'priceCacheMinutes')
-        let timeStamp = new Date(
-            PriceItems[item.definitionId]?.timeStamp
-        );
-        let now = new Date(Date.now())
-        let cacheDate = timeStamp.getTime() + (cacheMin * 60 * 1000);
-        let updated = PriceItems[item.definitionId]?.updated ?? 'Unknown'
-        if (updated!='Never' || updated.indexOf('weeks')<0){
-        return PriceItems[item.definitionId]?.price
-        }
-        if (
-            PriceItems[item.definitionId] &&
-            PriceItems[item.definitionId]?.timeStamp  &&
-            cacheDate < now 
-        ) {
-
-            return null;
-        }
-        let fbPrice=PriceItems[item.definitionId]?.price
-        return fbPrice;
-    };
-
-    let PriceItem = function (item, price, lastUpdated=null) {
-        let PriceItems = getPriceItems();
-        let timeStamp = new Date(Date.now() );
-        PriceItems[item.definitionId] = {
-            timeStamp: timeStamp,
-            price: price,
-            lastUpdated:lastUpdated
+        let PriceItem = function (item, price, lastUpdated=null) {
+            let PriceItems = getPriceItems();
+            let timeStamp = new Date(Date.now() );
+            PriceItems[item.definitionId] = {
+                timeStamp: timeStamp,
+                price: price,
+                lastUpdated:lastUpdated
+            };
+            savePriceItems();
         };
-        savePriceItems();
-    };
 
-    let getPriceItems = function () {
-        if (cachedPriceItems) {
+        let getPriceItems = function () {
+            if (cachedPriceItems) {
+                return cachedPriceItems;
+            }
+            cachedPriceItems = {};
+            let PriceItems = localStorage.getItem(PRICE_ITEMS_KEY);
+            if (PriceItems) {
+                cachedPriceItems = JSON.parse(PriceItems);
+            }
+
             return cachedPriceItems;
-        }
-        cachedPriceItems = {};
-        let PriceItems = localStorage.getItem(PRICE_ITEMS_KEY);
-        if (PriceItems) {
-            cachedPriceItems = JSON.parse(PriceItems);
-        }
-
-        return cachedPriceItems;
-    };
-    let PriceItemsCleanup = function (clubPlayerIds) {
-        let PriceItems = getPriceItems();
-        for (let _i = 0, _a = Array.from(PriceItems); _i < _a.length; _i++) {
-            let PriceItem = _a[_i];
-            if (!clubPlayerIds[PriceItem]) {
-                PriceItems.delete(PriceItem);
-            }
-        }
-        savePriceItems();
-    };
-    let savePriceItems = function () {
-        localStorage.setItem(PRICE_ITEMS_KEY, JSON.stringify(cachedPriceItems));
-    };
-
-    function makeGetRequest(url) {
-        return new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: url,
-                onload: function (response) {
-                    resolve(response.responseText);
-                },
-                onerror: function (error) {
-                    reject(error);
-                },
-            });
-        });
-    }
-
-    function makePostRequest(url, data) {
-        return new Promise((resolve, reject) => {
-            fetch(url, {
-                method: 'POST',
-                body: data,
-            })
-                .then((response) => {
-                // 1. check response.ok
-                if (response.ok) {
-                    return response.json();
+        };
+        let PriceItemsCleanup = function (clubPlayerIds) {
+            let PriceItems = getPriceItems();
+            for (let _i = 0, _a = Array.from(PriceItems); _i < _a.length; _i++) {
+                let PriceItem = _a[_i];
+                if (!clubPlayerIds[PriceItem]) {
+                    PriceItems.delete(PriceItem);
                 }
-                return Promise.reject(response); // 2. reject instead of throw
-            })
-                .then((json) => {
-                console.log(json);
-                resolve(json);
-            })
-                .catch((error) => {
-                console.log(error);
-                showNotification(
-                    `Please check backend API is running`,
-                    UINotificationType.NEGATIVE
-                );
-                hideLoader();
+            }
+            savePriceItems();
+        };
+        let savePriceItems = function () {
+            localStorage.setItem(PRICE_ITEMS_KEY, JSON.stringify(cachedPriceItems));
+        };
+
+        function makeGetRequest(url) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    onload: function (response) {
+                        resolve(response.responseText);
+                    },
+                    onerror: function (error) {
+                        reject(error);
+                    },
+                });
             });
-        });
-    }
-    const convertAbbreviatedNumber = (number) => {
-        let base = parseFloat(number);
-        if (number.toLowerCase().match(/k/)) {
-            return Math.round(base * 1000);
-        } else if (number.toLowerCase().match(/m/)) {
-            return Math.round(base * 1000000);
-        }
-        return number * 1;
-    };
-    const fetchLowestPriceByRating = async () => {
-        let PriceItems = getPriceItems();
-        for (let i=45;i<=80;i++){
-            PriceItem(
-                {
-                    "definitionId":i + '_CBR',
-                },
-                i<75?200:400
-            )
         }
 
-        const futBinCheapestByRatingResponse = await makeGetRequest(
-            `https://www.futbin.com/home-tab/cheapest-by-rating`
+        function makePostRequest(url, data) {
+            return new Promise((resolve, reject) => {
+                fetch(url, {
+                    method: 'POST',
+                    body: data,
+                })
+                    .then((response) => {
+                    // 1. check response.ok
+                    if (response.ok) {
+                        return response.json();
+                    }
+                    return Promise.reject(response); // 2. reject instead of throw
+                })
+                    .then((json) => {
+                    console.log(json);
+                    resolve(json);
+                })
+                    .catch((error) => {
+                    console.log(error);
+                    showNotification(
+                        `Please check backend API is running`,
+                        UINotificationType.NEGATIVE
+                    );
+                    hideLoader();
+                });
+            });
+        }
+        const convertAbbreviatedNumber = (number) => {
+            let base = parseFloat(number);
+            if (number.toLowerCase().match(/k/)) {
+                return Math.round(base * 1000);
+            } else if (number.toLowerCase().match(/m/)) {
+                return Math.round(base * 1000000);
+            }
+            return number * 1;
+        };
+        const fetchLowestPriceByRating = async () => {
+            let PriceItems = getPriceItems();
+            for (let i=45;i<=80;i++){
+                PriceItem(
+                    {
+                        "definitionId":i + '_CBR',
+                    },
+                    i<75?200:400
+                )
+            }
+
+            const futBinCheapestByRatingResponse = await makeGetRequest(
+                `https://www.futbin.com/home-tab/cheapest-by-rating`
 		);
         const doc = new DOMParser().parseFromString(futBinCheapestByRatingResponse, 'text/html');
         doc.querySelectorAll('img').forEach((img) => {
@@ -1385,32 +1391,31 @@
         };
 
     };
-    const fetchPlayerPrices = async (players) => {
-        const idsArray = players
-        .filter((f) => getPrice(f) == null )
-        .map((p) => p.definitionId);
-        console.log(players.filter((f) => getPrice(f) == null)
-                   )
-        if(idsArray.length>1){
-            showNotification(
-                `Fetching ${idsArray.length} Prices`,
-                UINotificationType.NEUTRAL
-            );}
+        const fetchPlayerPrices = async (players) => {
+            const idsArray = players
+            .filter((f) => getPrice(f) == null )
+            .map((p) => p.definitionId);
 
-        while (idsArray.length) {
-            const playersIdArray = idsArray.splice(0, 30);
-            const primaryId = playersIdArray.shift();
-            if (!primaryId) {
-                continue;
-            }
-            const refIds = playersIdArray.join(',');
-            const futBinResponse = await makeGetRequest(
-                `https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`
+            if(idsArray.length>1){
+                showNotification(
+                    `Fetching ${idsArray.length} Prices`,
+                    UINotificationType.NEUTRAL
+                );}
+
+            while (idsArray.length) {
+                const playersIdArray = idsArray.splice(0, 30);
+                const primaryId = playersIdArray.shift();
+                if (!primaryId) {
+                    continue;
+                }
+                const refIds = playersIdArray.join(',');
+                const futBinResponse = await makeGetRequest(
+                    `https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`
 			);
             let priceResponse;
             try {
                 priceResponse = JSON.parse(futBinResponse);
-                console.log(`https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`,priceResponse);
+                // console.log(`https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`,priceResponse);
             } catch (error) {
                 console.log(`https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`,futBinResponse);
                 console.error(error);
@@ -1446,7 +1451,61 @@
             }
         }
     };
+    const openPack= async(pack)=> {
+        await sendUnassignedtoTeam();
+        let ulist = await fetchUnassigned();
 
+        if (ulist.length>0){
+            goToUnassignedView()
+            return
+        }
+        return new Promise((resolve, reject) => {
+
+            repositories.Store.setDirty()
+            pack.open().observe(this, async function (obs, res) {
+                if (!res.success) {
+                    obs.unobserve(this);
+                    reject(res.status);
+                } else {
+                    let packPlayers=res.response
+                    showPack(pack,packPlayers)
+                    resolve(res.response)
+                }
+            });
+        });
+    };
+    const   showPack= (pack, packPlayers) =>{
+        console.log("opening pack")
+        let c = new UTStoreViewController
+        var o = null
+        , n = packPlayers.items.filter(function(e) {
+            return e.isPlayer()
+        });
+        if (0 < n.length) {
+            var r = new UTItemUtils
+            , s = n.sort(function(e, t) {
+                return r.sortByType(e, t)
+            });
+            o = s[0]
+        } else
+            packPlayers.items.forEach(function(e) {
+                (!o || o.discardValue < e.discardValue) && (o = e)
+            });
+        if (o) {
+            var a = new UTPackAnimationViewController;
+            a.initWithPackData(o,pack.assetId),
+                a.setAnimationCallback(function() {
+                this.dismissViewController(!1, function() {
+                    a.dealloc()
+                }),
+                    repositories.Store.setDirty()
+                 
+            }
+                                       .bind(c)),
+                a.modalDisplayStyle = "fullscreen",
+                c.presentViewController(a, !0)
+        }
+    }
     const packOverRide = async () => {
         const packOpen = UTStoreViewController.prototype.eOpenPack;
         UTStoreViewController.prototype.eOpenPack = async function (...args) {
@@ -1767,6 +1826,9 @@
                 createToggle(sbcParamsTile,'Use Concepts','useConcepts',getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useConcepts'),(toggleUC)=>{
                     saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'useConcepts',toggleUC.getToggleState())
                 })
+                createToggle(sbcParamsTile,'Automatically Open Reward Packs','autoOpenPacks',getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'autoOpenPacks'),(toggleAO)=>{
+                    saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'autoOpenPacks',toggleAO.getToggleState())
+                })
                 createNumberSpinner(sbcParamsTile,'Player Max Rating','maxRating',48,99,getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxRating'),(numberspinnerMR)=>{
                     saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxRating',numberspinnerMR.getValue())
                 })
@@ -1806,7 +1868,8 @@
         maxRating:99,
         repeatCount:0,
         showPrices:true,
-        useDupes:true
+        useDupes:true,
+        autoOpenPacks:false
     };
     const initDefaultSettings=()=>{
         Object.keys(defaultSBCSolverSettings).forEach(id=>
