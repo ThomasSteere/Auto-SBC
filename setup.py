@@ -6,10 +6,27 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 # Preprocess the club dataset obtained from api.
 
-def preprocess_data(df: pd.DataFrame):
+def preprocess_data(df: pd.DataFrame,sbc):
     df['price']= df['price'].fillna(15000000) #set price to 15m if missing so it will only use the player if really necessary
-    df = df.explode('possiblePositions')
-    df = df.explode('groups')  # Creating separate entries of a particular player for each alternate position.
+    expPP=False
+    expPR=False
+    for req in sbc['constraints']:
+        if req['requirementKey'] == 'CHEMISTRY_POINTS' or req['requirementKey'] == 'ALL_PLAYERS_CHEMISTRY_POINTS':
+            expPP=True        
+        if req['requirementKey'] == 'PLAYER_RARITY_GROUP':
+            expPR=True           
+              # Creating separate entries of a particular player for each alternate position.
+    if expPP:
+        df = df.assign(possiblePositions=[[x for x in l if x in sbc['formation']] for l in df['possiblePositions']])
+        df['possiblePositions'] = df['possiblePositions'].apply(lambda y: [99] if len(y)==0 else y)
+        
+        df = df.explode('possiblePositions')
+    else:
+        df = df.assign(possiblePositions=0)
+    if expPR:
+        df = df.explode('groups')
+    else:
+        df = df.assign(groups=0)
     df.to_csv("allPlayers.csv")
     df['Original_Idx'] = df.index
     df = df.reset_index(drop = True)
@@ -29,7 +46,7 @@ def runAutoSBC(sbc,players,maxSolveTime):
                 if req['scope']=='LOWER' or req['scope']=='EXACT':
                     df = df[df["ratingTier"] <= req['eligibilityValues'][0]]
 
-    df = preprocess_data(df)
+    df = preprocess_data(df,sbc)
     final_players,status,status_code = optimize.SBC(df,sbc,maxSolveTime)
     results=[]
     # if status != 2 and status != 4:

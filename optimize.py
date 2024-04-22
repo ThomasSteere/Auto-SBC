@@ -785,7 +785,7 @@ def SBC(df,sbc,maxSolveTime):
     # Specify the number of parallel workers (i.e. threads) to use during search.
     # This should usually be lower than your number of available cpus + hyperthread in your machine.
     # Setting this to 16 or 24 can help if the solver is slow in improving the bound.
-    solver.parameters.num_search_workers = 24
+    solver.parameters.num_search_workers = 16
     # Stop the search when the gap between the best feasible objective (O) and
     # our best objective bound (B) is smaller than a limit.
     # Relative: abs(O - B) / max(1, abs(O)).
