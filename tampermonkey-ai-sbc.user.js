@@ -567,7 +567,7 @@
     };
     const getControllerInstance = () => {
         return getCurrentViewController().getCurrentController()
-            ._childViewControllers[0];
+            .childViewControllers[0];
     };
 
     const sbcSets = async function () {
