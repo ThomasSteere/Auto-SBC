@@ -1083,7 +1083,7 @@
         UTSlotActionPanelView.prototype.setItem = function (e, t) {
             const result = UTDefaultSetItem.call(this, e, t);
             // Concept player
-            if (e.concept || e.isLoaned() || !e.isPlayer() || !e.id) {
+            if (e.concept || e.loans()>-1 || !e.isPlayer() || !e.id) {
                 return result;
             }
             if (!e.isDuplicate() && !isItemFixed(e)) {
