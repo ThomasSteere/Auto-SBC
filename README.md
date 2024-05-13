@@ -4,7 +4,7 @@
 
 ### Frontend
 The project utilizes [tamper monkey script](https://www.tampermonkey.net/) to output the users Club Player Data.
-Install the tampermonkey extension and then install [the frontend script](https://github.com/ThomasSteere/AI-SBC/raw/main/tampermonkey-ai-sbc.user.js)
+Install the tampermonkey extension and then install [the frontend script](https://github.com/ThomasSteere/Auto-SBC/raw/main/tampermonkey-ai-sbc.user.js)
 
 This script implements a number of backend functions but the main feature is a Solve SBC button on each SBC that send players to the backend solver. The solver will attempt to use the current sbc solution as a starting point. This means subsequent solves ( pushing solve sbc button ) will use the previous solve as a starting point.
 
