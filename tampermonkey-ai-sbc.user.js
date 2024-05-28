@@ -416,7 +416,7 @@
             services.Item.move(
                 ulist.filter((l) => l.isDuplicate() && l.untradeable ),
                 7
-            ).observe(this, function (obs, event) { 
+            ).observe(this, function (obs, event) {
                 repositories.Item.unassigned.clear();
                 repositories.Item.unassigned.reset();
                 resolve(ulist)});
@@ -982,7 +982,7 @@
                 sbcData.awards.forEach(async function (item, index){
                     let packs = await getPacks()
                     console.log('Opening Pack',item,packs.packs.filter(f=>f.id==item)[0])
-                    hideLoader();
+
                     await openPack(packs.packs.filter(f=>f.id==item)[0])
 
                     goToUnassignedView()
@@ -1058,6 +1058,7 @@
             solveSBC(sbcToTry[0],sbcToTry[1],true)
 
         }
+
         //getAppMain().getRootViewController().getPresentedViewController().getCurrentViewController().rootController.getRootNavigationController().pushViewController(currentView);
 
 
@@ -1070,6 +1071,7 @@
 
         if (ulist.length>0){
             goToUnassignedView()
+            return
         }
         repositories.Store.setDirty()
         let n = new UTStorePackViewController
@@ -1081,24 +1083,26 @@
         repositories.Item.unassigned.clear();
         repositories.Item.unassigned.reset();
         var r = getCurrentViewController().rootController;
-        gClickShield.showShield(EAClickShieldView.Shield.LOADING),
+        showLoader(),
             services.Item.requestUnassignedItems().observe(this,async function(e, t) {
             var i;
 
             e.unobserve(r);
             var o = r.getRootNavigationController();
             if (o) {
+
                 var n = isPhone() ? new UTUnassignedItemsViewController : new UTUnassignedItemsSplitViewController;
-                t.success && JSUtils.isObject(t.response) ? n.initWithItems(null === (i = t.response) || void 0 === i ? void 0 : i.items) : n.init(),
-                    services.Item.clearTransferMarketCache(),
-                    o.popToRootViewController(),
-                    o.pushViewController(n)
+                t.success && JSUtils.isObject(t.response) ? n.initWithItems(null === (i = t.response) || void 0 === i ? void 0 : i.items) : n.init()
+                services.Item.clearTransferMarketCache()
+                await swapDuplicatestoTeam()
+                o.popToRootViewController()
+                o.pushViewController(n)
 
             }
 
         })
-        await swapDuplicatestoTeam()
-        gClickShield.hideShield(EAClickShieldView.Shield.LOADING)
+
+        hideLoader();
     }
     const getPacks= async ()=>{
         return new Promise((resolve, reject) => {
@@ -1170,6 +1174,43 @@
     };
 
     const sbcViewOverride = () => {
+        UTSquadEntity.prototype._calculateRating = function() {
+            var t = this.isSBC() ? this.getFieldPlayers() : this.getFieldAndSubPlayers()
+            , e = services.Configuration.checkFeatureEnabled(UTServerSettingsRepository.KEY.SQUAD_RATING_FLOAT_CALCULATION_ENABLED)
+            , n = 0
+            , r = UTSquadEntity.FIELD_PLAYERS;
+            if (t.forEach(function(t, e) {
+                var i = t.item;
+                i.isValid() && (n += i.rating,
+                                UTSquadEntity.FIELD_PLAYERS <= e && r++)
+            }),
+                e) {
+                var o = n
+                , a = o;
+                0 < r && (o /= r),
+                    o = Math.min(o, 99),
+                    t.forEach(function(t, e) {
+                    var i = t.item;
+                    if (i.isValid()) {
+                        if (i.rating <= o)
+                            return;
+                        a += e < UTSquadEntity.FIELD_PLAYERS ? i.rating - o : .5 * (i.rating - o)
+                    }
+                }),
+                    n = Math.round(a,2)
+            } else {
+                var s = Math.min(Math.floor(n / r), 99);
+                t.forEach(function(t, e) {
+                    var i = t.item;
+                    if (i.isValid()) {
+                        if (i.rating <= s)
+                            return;
+                        n += e < UTSquadEntity.FIELD_PLAYERS ? i.rating - s : Math.floor(.5 * (i.rating - s))
+                    }
+                })
+            }
+            this._rating = new Intl.NumberFormat('en', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format( Math.min(Math.max(n / r, 0), 99))
+        }
         const squadDetailPanelView = UTSBCSquadDetailPanelView.prototype.init;
         UTSBCSquadDetailPanelView.prototype.init = function (...args) {
             const response = squadDetailPanelView.call(this, ...args);
@@ -1805,6 +1846,8 @@
             );
         }
     };
+
+
     const getUserPlatform = () => {
         if (services.User.getUser().getSelectedPersona().isPC) {
             return 'pc';
