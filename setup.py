@@ -69,9 +69,13 @@ def runAutoSBC(sbc,players,maxSolveTime):
 
 
 
-def calc_squad_rating(rating):
-    '''https://www.reddit.com/r/EASportsFC/comments/5osq7k/new_overall_rating_figured_out'''
-    rat_sum = sum(rating)
-    avg_rat = rat_sum / 11
-    excess = sum(max(rat - avg_rat, 0) for rat in rating)
-    return round(avg_rat + excess)
+
+
+def calc_squad_rating(ratings):
+    total_rating = sum(ratings)
+    squad_size = len(ratings)
+    excess = sum(rating - total_rating/squad_size for rating in ratings if rating > total_rating/squad_size)
+    adjusted_rating = total_rating + excess
+    squad_rating = round(adjusted_rating)
+    print("total_rating:", total_rating,"average rating:", total_rating/squad_size,"squad_size:", squad_size, "adjusted_rating:", adjusted_rating, "excess:", excess, "squad_rating:", squad_rating)
+    return min(max(round(squad_rating / squad_size,2), 0), 99)

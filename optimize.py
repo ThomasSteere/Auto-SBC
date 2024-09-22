@@ -2,7 +2,7 @@ import json
 from threading import Timer
 import time
 from ortools.sat.python import cp_model
-
+from decimal import Decimal
 
 def runtime(func):
     '''Wrapper function to log the execution time'''
@@ -48,7 +48,7 @@ def create_var(model, df, map_idx, num_cnts, sbc):
 
     player = []  # player[i] = 1 => i^th player is considered and 0 otherwise
     chem = []  # chem[i] = chemistry of i^th player
-
+    
     # Preprocessing things to speed-up model creation time.
     # Thanks Gregory Wullimann !!
     players_grouped = {
@@ -223,114 +223,79 @@ def create_player_level_constraint(df, model, player, map_idx, players_grouped, 
         model.Add(cp_model.LinearExpr.Sum(expr) >= NUM_LEVEL[i])
 
     return model
+excess = []
+R = {}
+rat_expr = []
+@runtime
+def create_squad_rating_constraint_3(df, model, player, map_idx, players_grouped, num_cnts, num_players, squad_rating):
+    '''Squad rating: Min XX (>=).'''
+    precision = 10000
+    round_expr = int(precision / 2)
+    squad_rating = int(squad_rating * precision)
+    
+    df["int_rating"] = (df["rating"] * precision).astype(int)
+    df["avg_rating"] = (df["rating"] * precision / num_players).astype(int)
 
-# @runtime
-# def create_rarity_1_constraint(df, model, player, map_idx, players_grouped, num_cnts):
-#     '''Create constraint for gold TOTW, gold Rare, gold Non Rare,
-#        silver TOTW, etc (>=).
-#     '''
-#     for i, rarity in enumerate(input.RARITY_1):
-#         idxes = list(df[(df["ratingTier"] == rarity[0]) &
-#                      (df["rarityId"] == rarity[1])].index)
-#         expr = [player[j] for j in idxes]
-#         model.Add(cp_model.LinearExpr.Sum(expr) >= input.NUM_RARITY_1[i])
-#     return model
+    total_rating = cp_model.LinearExpr.WeightedSum(player, df["int_rating"].tolist())
+    avg_var = model.NewIntVar(0, 99 * precision, "average_rating")
+    average_rating = cp_model.LinearExpr.WeightedSum(player, df["avg_rating"].tolist())
+    model.Add(average_rating == avg_var)
 
+    rating_list = df["rating"].unique().tolist()
+    rating_expr = []
+    excess = []
 
-# @runtime
-# def create_rarity_2_constraint(df, model, player, map_idx, players_grouped, num_cnts):
-#     '''[Rare, Common, TOTW, Gold, Silver, Bronze ... etc] (>=).'''
-#     for i, rarity_type in enumerate(input.RARITY_2):
-#         expr = []
-#         if rarity_type in ["Gold", "Silver", "Bronze"]:
-#             expr = players_grouped["ratingTier"].get(
-#                 map_idx["ratingTier"].get(rarity_type, -1), [])
-#         elif rarity_type == "Rare":
-#             # Consider the following cards as Rare.
-#             for col, rarity_list in input.CONSIDER_AS_RARE.items():
-#                 for rarity in rarity_list:
-#                     if col == 'Row_ID':
-#                         expr += player[int(rarity) - 2]
-#                     else:
-#                         expr += players_grouped[col].get(
-#                             map_idx[col].get(rarity, -1), [])
-#         else:
-#             expr = players_grouped["rarityId"].get(
-#                 map_idx["rarityId"].get(rarity_type, -1), [])
-#         model.Add(cp_model.LinearExpr.Sum(expr) >= input.NUM_RARITY_2[i])
-#     return model
-
+    for rating in rating_list:
+        precision_rating = int(rating * precision)
+        rating_idx = map_idx["rating"][rating]
+        expr = players_grouped["rating"].get(rating_idx, [])
+        
+        R = model.NewIntVar(0, num_players, f"R{rating_idx}")
+        rating_expr.append(R)
+        model.Add(R == cp_model.LinearExpr.Sum(expr))
+        
+        diff_var = model.NewIntVar(-99 * precision, 99 * precision, f"diff_{rating}")
+        model.Add(diff_var == precision_rating - avg_var)
+        
+        excess_var = model.NewIntVar(0, 99 * precision, f"excess_{rating}")
+        model.AddMaxEquality(excess_var, [diff_var, 0])
+        
+        total_rating_excess = model.NewIntVar(0, 99 * precision, f"tre{rating}")
+        model.AddMultiplicationEquality(total_rating_excess, [R, excess_var])
+        excess.append(total_rating_excess)
+    
+    sum_excess = cp_model.LinearExpr.Sum(excess)
+    final_rating = total_rating + sum_excess
+    model.Add(final_rating >= squad_rating * num_players - round_expr)
+    model.Add(total_rating >= (squad_rating - int(1 * precision)) * num_players - round_expr)
+    return model, final_rating, average_rating, sum_excess
 
 @runtime
-def create_squad_rating_constraint_2(df, model, player, map_idx, players_grouped, num_cnts, NUM_PLAYERS, SQUAD_RATING):
-    '''Squad rating: Min XX (>=) based on
-    https://www.reddit.com/r/EASportsFC/comments/5osq7k/new_overall_rating_figured_out.
-    Probably more accurate.
-    '''
-    num_players = num_cnts[0]
-    rating = df["rating"].tolist()
-    # Assuming that the original ratings have been scaled by 11 (NUM_PLAYERS).
-    avg_rat = cp_model.LinearExpr.WeightedSum(player, rating)
-    # This represents the max non-negative gap between player rating and squad avg_rating.
-    # Should be set to a reasonable amount to avoid overwhelming the solver.
-    # Good solutions likely don't have large gap anyways.
-    # max_rat * 11 - (min_rat * 10 + max_rat) (seems alright).
-    max_gap_bw_rating = min(
-        150, (df["rating"].max() - df["rating"].min()) * (NUM_PLAYERS - 1))
-    excess = [model.NewIntVar(0, max_gap_bw_rating,
-                              f"excess{i}") for i in range(num_players)]
+def create_squad_rating_constraint(df, model, player, map_idx, players_grouped, num_cnts, num_players, squad_rating):
+    """Squad rating: Min XX (>=)"""
+    ratings = df["rating"].tolist()
+    df['avgratings'] = df["rating"]/num_players
+    
+    total_rating_expr = cp_model.LinearExpr.WeightedSum(player, ratings)
+    
+    average_rating = cp_model.LinearExpr.WeightedSum(player, df['avgratings'].tolist())
+    # excess  (each player's rating - total avg rating)
+    
+    excess = [model.NewIntVar(0, 99, f"excess{i}")
+              for i in range(len(ratings))]
     [model.AddMaxEquality(excess[i], [(
-        player[i] * rat * NUM_PLAYERS - avg_rat), 0]) for i, rat in enumerate(rating)]
-    sum_excess = cp_model.LinearExpr.Sum(excess)
-    model.Add((avg_rat * NUM_PLAYERS + sum_excess) >=
-              (SQUAD_RATING) * (NUM_PLAYERS) * (NUM_PLAYERS))
-    return model
-
-
-@runtime
-def create_squad_rating_constraint_3(df, model, player, map_idx, players_grouped, num_cnts, NUM_PLAYERS, SQUAD_RATING):
-    '''Squad rating: Min XX (>=).
-    Another way to model 'create_squad_rating_constraint_2'.
-    This significantly speeds up the model creation time and for some reason
-    the solver converges noticeably faster to a good solution, even without a rating filter
-    when tested on a single constraint like Squad rating: Min XX.
-    '''
-    rat_list = df["rating"].unique().tolist()
-    # This variable represents how many players have a particular rating in the final solution.
-    R = {}
-    rat_expr = []
-    for rat in (rat_list):
-        rat_idx = map_idx["rating"][rat]
-        expr = players_grouped["rating"].get(rat_idx, [])
-        R[rat_idx] = model.NewIntVar(0, NUM_PLAYERS, f"R{rat_idx}")
-        rat_expr.append(R[rat_idx] * rat)
-        model.Add(R[rat_idx] == cp_model.LinearExpr.Sum(expr))
-    avg_rat = cp_model.LinearExpr.Sum(rat_expr)
-    # This is similar in concept to the excess variable in create_squad_rating_constraint_2.
-    excess = [model.NewIntVar(0, 1500, f"excess{i}")
-              for i in range(len(rat_list))]
-    for rat in (rat_list):
-        rat_idx = map_idx["rating"][rat]
-        lhs = rat * NUM_PLAYERS * R[rat_idx]
-        rat_expr_1 = []
-        for rat_1 in (rat_list):
-            rat_idx_1 = map_idx["rating"][rat_1]
-            temp = model.NewIntVar(0, 15000, f"temp{rat_idx_1}")
-            model.AddMultiplicationEquality(
-                temp, R[rat_idx], R[rat_idx_1] * rat_1)
-            rat_expr_1.append(temp)
-        rhs = cp_model.LinearExpr.Sum(rat_expr_1)
-        model.AddMaxEquality(excess[rat_idx], [lhs - rhs, 0])
-    sum_excess = cp_model.LinearExpr.Sum(excess)
-    model.Add((avg_rat * NUM_PLAYERS + sum_excess) >=
-              (SQUAD_RATING) * (NUM_PLAYERS) * (NUM_PLAYERS))
-    return model
+        player[i] * (ratings[i]  - average_rating)), 0]) for i in range(len(player))]
+    
+    sum_excess = cp_model.LinearExpr.WeightedSum(player,excess)
+    total_squad_rating=total_rating_expr + sum_excess
+    model.Add(total_squad_rating>= squad_rating * num_players )
+    return model, total_rating_expr, sum_excess
 
 
 @runtime
 def create_min_overall_constraint(df, model, player, map_idx, players_grouped, num_cnts,  NUM_MIN_OVERALL, MIN_OVERALL):
     '''Minimum OVR of XX : Min X (>=)'''
-    MAX_rating = df["rating"].max()
+    MAX_rating = int(df["rating"].max())
     for i, rating in enumerate(MIN_OVERALL):
         expr = []
         for rat in range(rating, MAX_rating + 1):
@@ -754,7 +719,7 @@ def SBC(df,sbc,maxSolveTime):
             model = create_max_overall_constraint(df, model, player, map_idx, players_grouped, num_cnts, [
                                                   req['count']], [req['eligibilityValues'][0]]) 
         if req['requirementKey'] == 'TEAM_RATING':  
-            model = create_squad_rating_constraint_3(
+            model,total_rating,average_rating, sum_excess = create_squad_rating_constraint_3(
                 df, model, player, map_idx, players_grouped, num_cnts, NUM_PLAYERS, req['eligibilityValues'][0])
                 
         if req['requirementKey'] == 'PLAYER_LEVEL':
@@ -785,7 +750,7 @@ def SBC(df,sbc,maxSolveTime):
     # Specify the number of parallel workers (i.e. threads) to use during search.
     # This should usually be lower than your number of available cpus + hyperthread in your machine.
     # Setting this to 16 or 24 can help if the solver is slow in improving the bound.
-    solver.parameters.num_search_workers = 16
+    solver.parameters.num_search_workers = 24
     # Stop the search when the gap between the best feasible objective (O) and
     # our best objective bound (B) is smaller than a limit.
     # Relative: abs(O - B) / max(1, abs(O)).
@@ -800,7 +765,17 @@ def SBC(df,sbc,maxSolveTime):
     
     print('\n')
     final_players = []
+   
+    
+    
+    
     if status == 2 or status == 4:  # Feasible or Optimal
+        for req in sbc['constraints']:
+        
+            if req['requirementKey']=='TEAM_RATING':
+                print("Total Rating: ",solver.Value(total_rating))
+                print("Average Rating: ",solver.Value(average_rating))
+                print("Excess: ",solver.Value(sum_excess))
         df['Chemistry'] = 0
         # Is_Pos = 1 => Player should be placed in their respective possiblePositions.
         df['Is_Pos'] = 0
