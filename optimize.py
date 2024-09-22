@@ -185,11 +185,27 @@ def create_rarity_group_constraint(df, model, player, map_idx, players_grouped, 
     for i, groupId_list in enumerate(RARITY_GROUPS):
         expr = []
         for groupId in groupId_list:
-            expr += players_grouped["groups"].get(
-                map_idx["groups"][groupId], [])
+            try:
+                expr += players_grouped["groups"].get(
+                    map_idx["groups"][groupId], [])
+            except Exception as error:
+                print("An exception occurred:", error)    
         model.Add(cp_model.LinearExpr.Sum(expr) >= NUM_RARITY_GROUP[i])
     return model
 
+@runtime
+def create_exact_rarity_group_constraint(df, model, player, map_idx, players_grouped, num_cnts, NUM_RARITY_GROUP,RARITY_GROUPS):
+    '''Create rarity group constraint (>=)'''
+    for i, groupId_list in enumerate(RARITY_GROUPS):
+        expr = []
+        for groupId in groupId_list:
+            try:
+                expr += players_grouped["groups"].get(
+                map_idx["groups"][groupId], [])
+            except Exception as error:
+                print("An exception occurred:", error)    
+        model.Add(cp_model.LinearExpr.Sum(expr) == NUM_RARITY_GROUP[i])
+    return model
 
 @runtime
 def create_rarity_constraint(df, model, player, map_idx, players_grouped, num_cnts, NUM_RARITY,RARITIES):
@@ -227,16 +243,17 @@ excess = []
 R = {}
 rat_expr = []
 @runtime
-def create_squad_rating_constraint_3(df, model, player, map_idx, players_grouped, num_cnts, num_players, squad_rating):
+def create_squad_rating_constraint_3(df, model, player, map_idx, players_grouped, num_cnts, num_players, squad_rating,scope):
     '''Squad rating: Min XX (>=).'''
     precision = 10000
     round_expr = int(precision / 2)
     squad_rating = int(squad_rating * precision)
     
     df["int_rating"] = (df["rating"] * precision).astype(int)
-    df["avg_rating"] = (df["rating"] * precision / num_players).astype(int)
-
+    df["avg_rating"] = ((df["rating"] /11) * precision ).astype(int)
+    total_var = model.NewIntVar(0, 99 * precision, "total_rating")
     total_rating = cp_model.LinearExpr.WeightedSum(player, df["int_rating"].tolist())
+    model.Add(total_rating == total_var)
     avg_var = model.NewIntVar(0, 99 * precision, "average_rating")
     average_rating = cp_model.LinearExpr.WeightedSum(player, df["avg_rating"].tolist())
     model.Add(average_rating == avg_var)
@@ -266,11 +283,15 @@ def create_squad_rating_constraint_3(df, model, player, map_idx, players_grouped
     
     sum_excess = cp_model.LinearExpr.Sum(excess)
     final_rating = total_rating + sum_excess
-    model.Add(final_rating >= squad_rating * num_players - round_expr)
-    model.Add(total_rating >= (squad_rating - int(1 * precision)) * num_players - round_expr)
+    if scope=="LOWER":
+        model.Add(final_rating <= squad_rating * num_players - round_expr)
+    else:
+        model.Add(final_rating >= squad_rating * num_players - round_expr)
+        model.Add(total_rating >= (squad_rating - int(4 * precision)) * num_players - round_expr)
+        model.Add(total_rating <= (squad_rating + int(4 * precision)) * num_players - round_expr)
     return model, final_rating, average_rating, sum_excess
-
-@runtime
+ 
+@runtime  
 def create_squad_rating_constraint(df, model, player, map_idx, players_grouped, num_cnts, num_players, squad_rating):
     """Squad rating: Min XX (>=)"""
     ratings = df["rating"].tolist()
@@ -709,7 +730,12 @@ def SBC(df,sbc,maxSolveTime):
             model = create_nationId_constraint(df, model, player, map_idx, players_grouped, num_cnts, [req['count']], [req['eligibilityValues']])
 
         if req['requirementKey']=='PLAYER_RARITY_GROUP': 
-            model = create_rarity_group_constraint(df, model, player, map_idx, players_grouped, num_cnts, [req['count']], [req['eligibilityValues']])
+            if req['scope']=='EXACT':
+                 model = create_exact_rarity_group_constraint(df, model, player, map_idx, players_grouped, num_cnts, [req['count']], [req['eligibilityValues']])
+            if req['scope']=='GREATER' :
+                model = create_rarity_group_constraint(df, model, player, map_idx, players_grouped, num_cnts, [req['count']], [req['eligibilityValues']])
+        
+           
         if req['requirementKey']=='PLAYER_RARITY': 
             model = create_rarity_constraint(df, model, player, map_idx, players_grouped, num_cnts, [req['count']], [req['eligibilityValues']])
         if req['requirementKey'] == 'PLAYER_MIN_OVR':
@@ -720,7 +746,7 @@ def SBC(df,sbc,maxSolveTime):
                                                   req['count']], [req['eligibilityValues'][0]]) 
         if req['requirementKey'] == 'TEAM_RATING':  
             model,total_rating,average_rating, sum_excess = create_squad_rating_constraint_3(
-                df, model, player, map_idx, players_grouped, num_cnts, NUM_PLAYERS, req['eligibilityValues'][0])
+                df, model, player, map_idx, players_grouped, num_cnts, NUM_PLAYERS, req['eligibilityValues'][0],req['scope'])
                 
         if req['requirementKey'] == 'PLAYER_LEVEL':
             model = create_player_level_constraint(df, model, player, map_idx, players_grouped, num_cnts, [req['count']], [req['eligibilityValues']])
@@ -761,7 +787,7 @@ def SBC(df,sbc,maxSolveTime):
     # solver.parameters.stop_after_first_solution = True
     '''Solver Parameters'''
     status = solver.Solve(model, ObjectiveEarlyStopping(
-        timer_limit=60))
+        timer_limit=30))
     
     print('\n')
     final_players = []
@@ -780,7 +806,8 @@ def SBC(df,sbc,maxSolveTime):
         # Is_Pos = 1 => Player should be placed in their respective possiblePositions.
         df['Is_Pos'] = 0
         for i in range(num_cnts[0]):
-            if solver.Value(player[i]) == 1:
+           
+            if solver.Value(player[i]) == 1 and df.loc[i,'cardType']!='BRICK':
                 final_players.append(i)
                 df.loc[i, "Chemistry"] = solver.Value(chem_expr[i])
                 df.loc[i, "Is_Pos"] = solver.Value(pos[i])

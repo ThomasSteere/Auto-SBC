@@ -10,11 +10,14 @@ def preprocess_data(df: pd.DataFrame,sbc):
     df['price']= df['price'].fillna(15000000) #set price to 15m if missing so it will only use the player if really necessary
     expPP=False
     expPR=False
+    rarityGroups=[]
     for req in sbc['constraints']:
         if req['requirementKey'] == 'CHEMISTRY_POINTS' or req['requirementKey'] == 'ALL_PLAYERS_CHEMISTRY_POINTS':
             expPP=True        
         if req['requirementKey'] == 'PLAYER_RARITY_GROUP':
-            expPR=True           
+            expPR=True        
+            rarityGroups= rarityGroups + req['eligibilityValues']  
+            
               # Creating separate entries of a particular player for each alternate position.
     if expPP:
         df = df.assign(possiblePositions=[[x for x in l if x in sbc['formation']] for l in df['possiblePositions']])
@@ -24,9 +27,14 @@ def preprocess_data(df: pd.DataFrame,sbc):
     else:
         df = df.assign(possiblePositions=0)
     if expPR:
+      
+        df = df.assign(groups=[[x for x in l if x in rarityGroups] for l in df['groups']])
+      
+        df['groups'] = df['groups'].apply(lambda y: [99] if len(y)==0 else y)
         df = df.explode('groups')
     else:
         df = df.assign(groups=0)
+
     df.to_csv("allPlayers.csv")
     df['Original_Idx'] = df.index
     df = df.reset_index(drop = True)
@@ -40,12 +48,29 @@ def runAutoSBC(sbc,players,maxSolveTime):
     # Remove All Players not matching quality first
     df = df[df["price"] > 0]
     for req in sbc['constraints']:
+        if req['requirementKey'] == '1TEAM_RATING' and len(sbc['brickIndices'])>0:
+            sbc['constraints'].append({'scope': 'EXACT', 'count': len(sbc['brickIndices']), 'requirementKey': 'CLUB_ID', 'eligibilityValues': [999]})
+            #   df = df.assign(newgroups=[[x for x in l if x in req['eligibilityValues']] for l in df['groups']])
+            #   df['groups'] = df['newgroups'].apply(lambda y: [99] if y!=req['eligibilityValues'] else y)
+            #   df = df[df["groups"][0] != [-1]]
         if req['requirementKey'] == 'PLAYER_QUALITY':
                 if req['scope']=='GREATER' or req['scope']=='EXACT':
                     df = df[df["ratingTier"] >= req['eligibilityValues'][0]]
                 if req['scope']=='LOWER' or req['scope']=='EXACT':
                     df = df[df["ratingTier"] <= req['eligibilityValues'][0]]
-
+   
+    
+    brick_rows = len(sbc['brickIndices'])
+    for i in range(brick_rows):
+    # Create brick DataFrame with brick rows
+        brick_data = {'id': i, 'name': 'BRICK{}'.format(i), 'cardType': 'BRICK', 'assetId': i, 'definitionId': i, 'rating': 55, 'teamId': 999, 'leagueId': 999, 'nationId': 999, 
+'rarityId': 999, 'ratingTier': 999, 'isUntradeable': '', 'isDuplicate': '', 'preferredPosition': '0', 'possiblePositions': [0], 'groups': 999 , 'isFixed': '', 'concept': '', 'price': 15000000, 'futBinPrice': ''}
+              
+       
+        brick_df = pd.DataFrame([brick_data])
+        
+        # Concatenate the original DataFrame with the brick DataFrame
+        # df = pd.concat([df, brick_df], ignore_index=True)   
     df = preprocess_data(df,sbc)
     final_players,status,status_code = optimize.SBC(df,sbc,maxSolveTime)
     results=[]
@@ -74,8 +99,8 @@ def runAutoSBC(sbc,players,maxSolveTime):
 def calc_squad_rating(ratings):
     total_rating = sum(ratings)
     squad_size = len(ratings)
-    excess = sum(rating - total_rating/squad_size for rating in ratings if rating > total_rating/squad_size)
+    excess = sum(rating - total_rating/11 for rating in ratings if rating > total_rating/11)
     adjusted_rating = total_rating + excess
     squad_rating = round(adjusted_rating)
-    print("total_rating:", total_rating,"average rating:", total_rating/squad_size,"squad_size:", squad_size, "adjusted_rating:", adjusted_rating, "excess:", excess, "squad_rating:", squad_rating)
-    return min(max(round(squad_rating / squad_size,2), 0), 99)
+    print("total_rating:", total_rating,"average rating:", total_rating/11,"squad_size:", squad_size, "adjusted_rating:", adjusted_rating, "excess:", excess, "squad_rating:", squad_rating)
+    return min(max(round(squad_rating / 11,2), 0), 99)
