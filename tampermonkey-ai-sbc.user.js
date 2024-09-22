@@ -961,7 +961,7 @@ console.log(backendPlayersInput.filter(f=>f.isDuplicate))
         if (solution.status_code != 2 && solution.status_code != 4) {
 
             hideLoader();
-            wompSound.play()
+            if (getSettings(0,0,'playSounds')){wompSound.play()}
             showNotification(solution.status, UINotificationType.NEGATIVE);
             if (sbcLogin.length>0){
                 let sbcToTry = sbcLogin.shift();
@@ -1081,7 +1081,7 @@ console.log(_squad)
                 undefined,
                 async function (sender, data) {
                     if (!data.success) {
-                        wompSound.play()
+                        if (getSettings(0,0,'playSounds')){wompSound.play()}
                         showNotification(
                             'Failed to save squad.',
                             UINotificationType.NEGATIVE
@@ -1089,7 +1089,7 @@ console.log(_squad)
                         _squad.removeAllItems();
                         hideLoader();
                         if (data.error) {
-                            wompSound.play()
+                            if (getSettings(0,0,'playSounds')){wompSound.play()}
                             showNotification(
                                 `Error code: ${data.error.code}`,
                                 UINotificationType.NEGATIVE
@@ -1217,7 +1217,7 @@ console.log(_squad)
                 async function (obs, res) {
                     if (!res.success) {
                         obs.unobserve(this);
-                        wompSound.play()
+                        if (getSettings(0,0,'playSounds')){wompSound.play()}
                         showNotification(
                             'Failed to submit',
                             UINotificationType.NEGATIVE
@@ -1618,7 +1618,7 @@ console.log(_squad)
             })
                 .catch((error) => {
                 console.log(error);
-                wompSound.play()
+                if (getSettings(0,0,'playSounds')){wompSound.play()}
                 showNotification(
                     `Please check backend API is running`,
                     UINotificationType.NEGATIVE
@@ -1808,7 +1808,7 @@ console.log(_squad)
                         futBinPrice:getPrice(item)
                     }}))
                     if (packPlayers.items.filter(function(e) {
-                        return e.rating>97 || !getSettings(0,0,'animateWalkouts')
+                        return e.rating>=getSettings(0,0,'animateWalkouts')
                     }).length>0){
                         createSbc=false
                         await showPack(pack,packPlayers)
@@ -1849,9 +1849,9 @@ console.log(_squad)
                 });
             console.log(o.rating,o)
 
-            if (o && (o.rating>97 || !getSettings(0,0,'animateWalkouts'))) {
+            if (o && (o.rating>=getSettings(0,0,'animateWalkouts'))) {
 
-                sound.play();
+                if (getSettings(0,0,'playSounds')){sound.play();}
                 var a = new UTPackAnimationViewController;
                 a.initWithPackData(o,pack.assetId),
                     a.setAnimationCallback(function() {
@@ -2191,7 +2191,12 @@ resolve()
                 saveSettings(0,0,'collectConcepts',toggleCC.getToggleState() )
                 getConceptPlayers();
             })
-            createToggle(sbcUITile,'Skip non-walkout animations','animateWalkouts',getSettings(0,0,'animateWalkouts'),(toggleAW)=>{
+            createToggle(sbcUITile,'Play Sounds','playSounds',getSettings(0,0,'playSounds'),(togglePS)=>{
+                saveSettings(0,0,'playSounds',togglePS.getToggleState() )
+
+            })
+            
+            createNumberSpinner(sbcUITile,'Min Rating for Pack Animation','animateWalkouts',getSettings(0,0,'animateWalkouts'),(toggleAW)=>{
                 saveSettings(0,0,'animateWalkouts',toggleAW.getToggleState())
             })
             createToggle(sbcUITile,'Only use TOTW/TOTS where necessary','saveTotw',getSettings(0,0,'saveTotw'),(toggleST)=>{
@@ -2319,7 +2324,8 @@ resolve()
         apiUrl: 'http://127.0.0.1:8000/solve',
         useConcepts: false,
         collectConcepts :false,
-        animateWalkouts:  true,
+        animateWalkouts:  86,
+        playSounds:true,
         autoSubmit:0,
         maxSolveTime: 60,
         priceCacheMinutes: 1440,
