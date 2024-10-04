@@ -85,6 +85,7 @@ def runAutoSBC(sbc,players,maxSolveTime):
         print(f"Total Cost: {df_out['price'].sum()}")
         df_out['Org_Row_ID'] = df_out['Original_Idx'] + 2
         df_out.pop('Original_Idx')
+        df_out.to_csv("final_players.csv")
         print(sbc, status, status_code)
         results = df_out.to_json(orient="records")
         json_compatible_item_data = jsonable_encoder({'results':results,'status':status,'status_code':status_code})

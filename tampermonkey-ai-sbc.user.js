@@ -2,13 +2,13 @@
 // @name         FIFA Auto SBC
 // @namespace    http://tampermonkey.net/
 // @version      25.1
-// @description  automatically solve EAFC 24 SBCs using the currently available players in the club with the minimum cost
+// @description  automatically solve EAFC 25 SBCs using the currently available players in the club with the minimum cost
 // @author       TitiroMonkey
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @grant        GM_xmlhttpRequest
-// @connect 	 www.futbin.com
+// @connect 	 www.fut.gg
 // @connect      127.0.0.1
 
 // ==/UserScript==
@@ -428,14 +428,18 @@ word-wrap:breakword;
         let ulist = await fetchUnassigned();
 
         return new Promise((resolve) => {
+            if(ulist.filter((l) => l.isDuplicate() && l.untradeable ).length>0){
             services.Item.move(
                 ulist.filter((l) => l.isDuplicate() && l.untradeable ),
                 7
             ).observe(this, function (obs, event) {
                 repositories.Item.unassigned.clear();
                 repositories.Item.unassigned.reset();
-                resolve(ulist)});
+                });
+            }
+        resolve(ulist)
         })
+
     }
 
     const fetchUnassigned = () => {
@@ -1314,18 +1318,22 @@ console.log(_squad)
     const playerItemOverride = () => {
         const UTDefaultSetItem = UTSlotActionPanelView.prototype.setItem;
         UTSlotActionPanelView.prototype.setItem = function (e, t) {
+            console.log('defaultsetitem',this)
             const result = UTDefaultSetItem.call(this, e, t);
+
             // Concept player
             if (e.concept || e.loans>-1 || !e.isPlayer() || !e.id) {
                 return result;
             }
-            if (!e.isDuplicate() && !isItemFixed(e)) {
+            if (!e.isDuplicate() && !isItemFixed(e) && !this.lockUnlockButton) {
                 const label = isItemLocked(e) ? lockedLabel : unlockedLabel;
                 const button = new UTGroupButtonControl();
                 button.init();
+                insertBefore(button, this._btnBio.__root);
+
                 button.setInteractionState(true);
                 button.setText(label);
-                insertBefore(button, this._btnBio.__root);
+                
                 button.addTarget(
                     this,
                     async () => {
@@ -1345,8 +1353,9 @@ console.log(_squad)
                     },
                     EventType.TAP
                 );
+                this.lockUnlockButton = button;
             }
-            if (!isItemLocked(e)) {
+            if (!isItemLocked(e) && !this.fixUnfixButton) {
                 const fixLabel = isItemFixed(e) ? fixedLabel : unfixedLabel;
                 const fixbutton = new UTGroupButtonControl();
                 fixbutton.init();
@@ -1372,6 +1381,7 @@ console.log(_squad)
                     },
                     EventType.TAP
                 );
+                this.fixUnfixButton = fixbutton;
             }
             return result;
         };
@@ -1379,6 +1389,7 @@ console.log(_squad)
         const UTDefaultAction = UTDefaultActionPanelView.prototype.render;
         UTDefaultActionPanelView.prototype.render = function (e, t, i, o, n, r, s) {
             const result = UTDefaultAction.call(this, e, t, i, o, n, r, s);
+
             // Concept player
             if (e.concept || e.loans>-1 || !e.isPlayer() || !e.id) {
                 return result;
@@ -1390,7 +1401,6 @@ console.log(_squad)
                     button.init();
                     button.setInteractionState(true);
                     button.setText(label);
-                    console.log(this)
                     insertBefore(button, this._bioButton.__root);
                     button.addTarget(
                         this,
@@ -1501,13 +1511,34 @@ console.log(_squad)
     };
 
     let priceCacheMinutes = 60;
-    let PRICE_ITEMS_KEY = 'futbinprices';
+    let PRICE_ITEMS_KEY = 'futggPrices';
     let cachedPriceItems;
+    let isPriceOld = function (item){
+         let PriceItems = getPriceItems()
+          if(!(item.definitionId in PriceItems)){return true}
+         let cacheMin = item.concept ? 1440 : getSettings(0,0,'priceCacheMinutes')
+        let timeStamp = new Date(
+            PriceItems[item.definitionId]?.timeStamp
+        );
 
+        let now = new Date(Date.now())
+        let cacheDate = timeStamp.getTime() + (cacheMin * 60 * 1000);
+        if (
+            PriceItems[item.definitionId] &&
+            PriceItems[item.definitionId]?.timeStamp  &&
+
+            cacheDate < now
+        ) {
+            return true
+        }
+        return false
+    }
     let getPrice = function (item) {
-
         let PriceItems = getPriceItems()
         if(!(item.definitionId in PriceItems)){return null}
+        return PriceItems[item.definitionId]?.price
+        
+        
         //console.log(PriceItems[item.definitionId])
         let cacheMin = item.concept ? 1440 : getSettings(0,0,'priceCacheMinutes')
         let timeStamp = new Date(
@@ -1515,23 +1546,7 @@ console.log(_squad)
         );
 
         let now = new Date(Date.now())
-        if(PriceItems[item.definitionId]?.lastUpdated ==0){PriceItems[item.definitionId].lastUpdated='Never'}
-        let lastUpdated=PriceItems[item.definitionId]?.lastUpdated ?? 'Unknown'
-
-        let cacheDate = timeStamp.getTime() + (cacheMin * 60 * 1000);
-
-        if (PriceItems[item.definitionId]?.lastUpdated==null && PriceItems[item.definitionId]?.price==0){
-            //  console.log('Unknown 0 Price',PriceItems[item.definitionId],item,PriceItems[item.definitionId].lastUpdated!='Never')
-            return null
-        }
-        if ( PriceItems[item.definitionId]?.lastUpdated=='Never' ||  lastUpdated.indexOf('weeks')>0 ){
-            return PriceItems[item.definitionId]?.price
-        }
-
-        if ( PriceItems[item.definitionId]?.lastUpdated=='Never' && PriceItems[item.definitionId]?.price==0){
-            return -1
-        }
-
+        
         if (
             PriceItems[item.definitionId] &&
             PriceItems[item.definitionId]?.timeStamp  &&
@@ -1545,16 +1560,14 @@ console.log(_squad)
         return fbPrice;
     };
 
-    let PriceItem = function (item, price, lastUpdated=null) {
+    let PriceItem = function (items) {
         //  console.log(item, price, lastUpdated)
         let PriceItems = getPriceItems();
-        let timeStamp = new Date(Date.now() );
-        if (lastUpdated==0){lastUpdated='Never'}
-        PriceItems[item.definitionId] = {
-            timeStamp: timeStamp,
-            price: price,
-            lastUpdated:lastUpdated
-        };
+        let timeStamp = new Date(Date.now());
+       for (let key in items) {
+           items[key]["timeStamp"] = timeStamp;
+           PriceItems[items[key]["eaId"]]=items[key]
+       }
         savePriceItems();
     };
 
@@ -1639,84 +1652,34 @@ console.log(_squad)
     };
     const fetchLowestPriceByRating = async () => {
         let PriceItems = getPriceItems();
-        for (let i=45;i<=80;i++){
-            PriceItem(
-                {
-                    "definitionId":i + '_CBR',
-                },
-                i<75?200:400
-            )
-        }
-
-        const futBinCheapestByRatingResponse = await makeGetRequest(
-            `https://www.futbin.com/home-tab/cheapest-by-rating`
-		);
-        const doc = new DOMParser().parseFromString(futBinCheapestByRatingResponse, 'text/html');
-        doc.querySelectorAll('img').forEach((img) => {
-            img.remove()
-
-        });
-
-        let cbrRow=(doc.getElementsByClassName("cheapestsbcplayerslist"))[0]
-        let col9=cbrRow.getElementsByClassName('stc-rating')
-        for (let i = 0; i < col9.length; i++) {
-            PriceItem(
-                {
-                    "definitionId":col9[i].innerText.replace('Rated players', '').trim() + '_CBR',
-                },
-                convertAbbreviatedNumber(
-                    cbrRow.getElementsByClassName('platform-price-wrapper-small')[i * 5].innerText.trim()
-                )
-            );
-        };
-        for (let i=93;i<=99;i++){
-            await fetchSingleCheapest(i)
-        }
+      
     };
-    const fetchSingleCheapest = async(rating)=>{
-        const futBinSingleCheapestByRatingResponse = await makeGetRequest(
-            `https://www.futbin.com/players?ps_price=200%2B&player_rating=${rating}-${rating}&sort=ps_price&order=asc`
-		);
-        const doc = new DOMParser().parseFromString(futBinSingleCheapestByRatingResponse, 'text/html');
-        doc.querySelectorAll('img').forEach((img) => {
-            img.remove()
-        });
-        console.log('CBR',rating, doc.getElementsByClassName("price")[0].innerText.trim())
-        PriceItem(
-            {
-                "definitionId":rating + '_CBR',
-            },
-            convertAbbreviatedNumber(
-                doc.getElementsByClassName("price")[0].innerText.trim()
-            )
-        );
-
-    }
+ 
     const fetchPlayerPrices = async (players) => {
         let duplicateIds = await fetchDuplicateIds();
-        let idsArray =players.filter((f) => getPrice(f) == null && f.isPlayer())
+        let idsArray =players.filter((f) => isPriceOld(f) && f.isPlayer())
         .map((p) => p.definitionId);
 
         let totalPrices=idsArray.length
         while (idsArray.length) {
             let PriceItems = getPriceItems();
 
-            const playersIdArray = idsArray.splice(0, 30);
-            const primaryId = playersIdArray.shift();
-            if (!primaryId) {
-                continue;
-            }
-            const refIds = playersIdArray.join(',');
+            const playersIdArray = idsArray.splice(0, 50);
+
+            
             const futBinResponse = await makeGetRequest(
-                `https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`
+                `https://www.fut.gg/api/fut/player-prices/25/?ids=${playersIdArray}`
 
 			);
             let priceResponse;
             try {
                 priceResponse = JSON.parse(futBinResponse);
-                console.log(`https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`,priceResponse);
+                priceResponse=priceResponse.data
+                console.log(priceResponse)
+                PriceItem(priceResponse)
+               
             } catch (error) {
-                console.log(`https://www.futbin.com/24/playerPrices?player=${primaryId}&rids=${refIds}`,futBinResponse);
+                
                 console.error(error);
                 await wait();
                 continue;
@@ -1726,44 +1689,6 @@ console.log(_squad)
                     UINotificationType.NEUTRAL
                 )}
 
-            for (const id of [primaryId, ...playersIdArray]) {
-                let player = players.filter((f) => f.definitionId == id)[0];
-
-
-                const prices = priceResponse[id]?.prices[getUserPlatform()];
-
-                const lcPrice = prices.LCPrice;
-
-                if (!lcPrice) {
-                    //  console.log('Missing Price',lcPrice,PriceItems[player.definitionId])
-                    PriceItem(
-                        player,
-                        0,
-                        prices?.updated
-                    );
-                    continue;
-                }
-
-                let cardPrice = parseInt(lcPrice.replace(/[,.]/g, ''));
-
-
-                if (prices.updated==0){prices.updated='Never'}
-                if (cardPrice == 0 && !prices.updated) {
-
-                    await fetchPlayerPrices(
-                        players.filter((f) => f.definitionId == id)
-                    )
-
-
-                } else{
-                    PriceItem(
-                        player,
-                        cardPrice,
-                        prices?.updated
-                    );
-                }
-                await wait(0.2)
-            }
         }
     }
     let sound = new Audio("https://raw.githubusercontent.com/Yousuke777/sound/main/kansei.mp3");
@@ -2196,7 +2121,7 @@ resolve()
 
             })
             
-            createNumberSpinner(sbcUITile,'Min Rating for Pack Animation','animateWalkouts',getSettings(0,0,'animateWalkouts'),(toggleAW)=>{
+            createNumberSpinner(sbcUITile,'Min Rating for Pack Animation','animateWalkouts',1,100,getSettings(0,0,'animateWalkouts'),(toggleAW)=>{
                 saveSettings(0,0,'animateWalkouts',toggleAW.getToggleState())
             })
             createToggle(sbcUITile,'Only use TOTW/TOTS where necessary','saveTotw',getSettings(0,0,'saveTotw'),(toggleST)=>{
