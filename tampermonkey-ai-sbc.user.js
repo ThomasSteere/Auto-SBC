@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FIFA Auto SBC
 // @namespace    http://tampermonkey.net/
-// @version      25.1
+// @version      25.1.1
 // @description  automatically solve EAFC 25 SBCs using the currently available players in the club with the minimum cost
 // @author       TitiroMonkey
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
@@ -942,7 +942,7 @@ word-wrap:breakword;
                 isFixed: isItemFixed(item),
                 concept: item.concept,
                 price: getSBCPrice(item,duplicateIds),
-                futBinPrice:getPrice(item)
+                futggPrice:getPrice(item)
             };
         });
 console.log(backendPlayersInput.filter(f=>f.isDuplicate))
@@ -1650,11 +1650,52 @@ console.log(_squad)
         }
         return number * 1;
     };
+
     const fetchLowestPriceByRating = async () => {
+        
         let PriceItems = getPriceItems();
-      
+        let timeStamp = new Date(Date.now());
+            
+        for (let i=45;i<=80;i++){
+            PriceItems[i + '_CBR'] = {"price": i<75?200:400,"timestamp":timeStamp}
+               
+        }
+            
+        for (let i=80;i<=99;i++){
+            await fetchSingleCheapest(i)
+        }
+        
     };
- 
+    const fetchSingleCheapest = async(rating)=>{
+        const futggSingleCheapestByRatingResponse = await makeGetRequest(
+            `https://www.fut.gg/players/?overall__gte=${rating}&overall__lte=${rating}&price__gte=100&sorts=current_price`
+		);
+        const doc = new DOMParser().parseFromString(futggSingleCheapestByRatingResponse, 'text/html');
+        let playerLink = (doc.getElementsByClassName("fut-card-container")[0].href.split('-')[0]).split('/').pop()
+        console.log(playerLink)
+        const futggResponse = await makeGetRequest(
+            `https://www.fut.gg/api/fut/player-prices/25/?ids=${playerLink}`
+
+        );
+        let priceResponse;
+        try {
+            priceResponse = JSON.parse(futggResponse);
+            priceResponse=priceResponse.data
+            console.log(priceResponse)
+        } catch (error) {
+                
+            console.error(error);
+        
+            return;
+        } 
+        let PriceItems = getPriceItems();
+        let timeStamp = new Date(Date.now());
+        for (let key in priceResponse) {
+            priceResponse[key]["timeStamp"] = timeStamp;
+            PriceItems[rating + '_CBR']=priceResponse[key]
+        }
+        savePriceItems();
+    }
     const fetchPlayerPrices = async (players) => {
         let duplicateIds = await fetchDuplicateIds();
         let idsArray =players.filter((f) => isPriceOld(f) && f.isPlayer())
@@ -1667,13 +1708,13 @@ console.log(_squad)
             const playersIdArray = idsArray.splice(0, 50);
 
             
-            const futBinResponse = await makeGetRequest(
+            const futggResponse = await makeGetRequest(
                 `https://www.fut.gg/api/fut/player-prices/25/?ids=${playersIdArray}`
 
 			);
             let priceResponse;
             try {
-                priceResponse = JSON.parse(futBinResponse);
+                priceResponse = JSON.parse(futggResponse);
                 priceResponse=priceResponse.data
                 console.log(priceResponse)
                 PriceItem(priceResponse)
@@ -1730,7 +1771,7 @@ console.log(_squad)
                         ) + ' ') +
                         services.Localization.localize('item.raretype' + item.rareflag),
                         rating: item.rating,
-                        futBinPrice:getPrice(item)
+                        futggPrice:getPrice(item)
                     }}))
                     if (packPlayers.items.filter(function(e) {
                         return e.rating>=getSettings(0,0,'animateWalkouts')
