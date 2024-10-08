@@ -1,4 +1,4 @@
-## EA FC 24 Automated SBC Solving ⚽
+## EAFC Automated SBC Solving ⚽
 
 #### The goal is to automatically solve the SBC using the currently available players in the club with the minimum cost.
 
@@ -17,11 +17,7 @@ This is useful to get rid of high rated duplicates or overpriced SBCS.
 
 ![solveBtn](https://github.com/ThomasSteere/AI-SBC/blob/main/pictures/Player.jpg?raw=true)
 
-Current base price is based off of Futbin prices cached for 60 minutes
-- SBC Prices used in calculations ->
-	- Duplicates discounted to 10%
-	- Untradable discounted to 80%
-	- Objective Cards uses [cheapest by rating ](https://www.futbin.com/home-tab/cheapest-by-rating) with premium of 50% added bounded by players max and min price limit
+Check out the settings menu item for extra details!
 
 ### Backend
 

@@ -253,7 +253,7 @@ def create_squad_rating_constraint_3(df, model, player, map_idx, players_grouped
     df["avg_rating"] = ((df["rating"] /11) * precision ).astype(int)
     total_var = model.NewIntVar(0, 99 * precision, "total_rating")
     total_rating = cp_model.LinearExpr.WeightedSum(player, df["int_rating"].tolist())
-    model.Add(total_rating == total_var)
+    # model.Add(total_rating == total_var)
     avg_var = model.NewIntVar(0, 99 * precision, "average_rating")
     average_rating = cp_model.LinearExpr.WeightedSum(player, df["avg_rating"].tolist())
     model.Add(average_rating == avg_var)
@@ -670,6 +670,7 @@ def SBC(df,sbc,maxSolveTime):
               "rating", "ratingTier", "groups","rarityId", "name", ]
     for field in fields:
         map_idx[field] = get_dict(df, field)
+  
     '''Create the CP-SAT Model'''
     model = cp_model.CpModel()
 
