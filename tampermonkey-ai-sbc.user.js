@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FIFA Auto SBC
 // @namespace    http://tampermonkey.net/
-// @version      25.1.2
+// @version      25.1.3
 // @description  automatically solve EAFC 25 SBCs using the currently available players in the club with the minimum cost
 // @author       TitiroMonkey
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
@@ -810,7 +810,7 @@ color:black
 
             if (sbcLogin.length>0){
                 let sbcToTry = sbcLogin.shift();
-                console.log(sbcLogin,sbcToTry)
+                
                 sbcLogin = sbcLogin.slice()
                 services.Notification.queue([
                     sbcToTry[2] + ' SBC Started',
@@ -936,7 +936,7 @@ color:black
         let excludeRarity=getSettings(sbcId,sbcData.challengeId,'excludeRarity') || []
         let excludeTeams=getSettings(sbcId,sbcData.challengeId,'excludeTeams') || []
         let duplicateIds = await fetchDuplicateIds();
-        console.log('players',players)
+      
         let backendPlayersInput = players
         .filter(
             (item) =>
@@ -981,13 +981,13 @@ color:black
                 futggPrice:getPrice(item)
             };
         });
-        console.log(backendPlayersInput.filter(f=>f.isDuplicate))
+      
         const input = JSON.stringify({
             clubPlayers: backendPlayersInput,
             sbcData: sbcData,
             maxSolveTime:getSettings(sbcId,sbcData.challengeId,'maxSolveTime')
         });
-        console.log('Sending SBC to Solve...',backendPlayersInput);
+    
         count = getSettings(sbcId,sbcData.challengeId,'maxSolveTime')
         showLoader(true);
         countDownInterval = setInterval(countDown, 1000)
@@ -1062,29 +1062,29 @@ color:black
             ] = players.filter((f) => item.id == f.id)[0];
         });
         _squad.setPlayers(_solutionSquad, true);
-        console.log(_squad)
+  
         await loadChallenge(_challenge);
         let autoSubmitId=getSettings(sbcId,sbcData.challengeId,'autoSubmit')
         if (((solution.status_code == autoSubmitId) || autoSubmitId==1) && autoSubmit) {
             await	sbcSubmit(_challenge, sbcSet);
             if (getSettings(sbcId,sbcData.challengeId,'autoOpenPacks')){
-                console.log('Awards',sbcData.awards)
+               
                 repositories.Store.setDirty()
-                console.log('Get Packs')
+                
                 let item = sbcData.awards[0]
-                console.log('Get Packs')
+            
                 let packs = await getPacks()
-                console.log('Opening Pack',item,packs.packs.filter(f=>f.id==item)[0])
+               
 
                 let pack=await openPack(packs.packs.filter(f=>f.id==item)[0])
-                console.log('Opened Pack',pack)
+                
                 goToUnassignedView()
 
 
 
             }
             if (!getSettings(sbcId,sbcData.challengeId,'autoOpenPacks')){
-                console.log('going to packs')
+             
                 goToPacks()
 
             }
@@ -1144,7 +1144,7 @@ color:black
         }
 
         if (sbcLogin.length>0){
-            console.log('end',sbcLogin)
+          
             let sbcToTry = sbcLogin.shift();
             sbcLogin = sbcLogin.slice()
             services.Notification.queue([
@@ -1305,7 +1305,7 @@ color:black
                     }
                 }),
                     n = Math.round(a,2)
-                console.log(a,o,n,n/r)
+                
             } else {
                 var s = Math.min(Math.floor(n / r), 99);
                 t.forEach(function(t, e) {
@@ -1354,7 +1354,7 @@ color:black
     const playerItemOverride = () => {
         const UTDefaultSetItem = UTSlotActionPanelView.prototype.setItem;
         UTSlotActionPanelView.prototype.setItem = function (e, t) {
-            console.log('defaultsetitem',this)
+            
             const result = UTDefaultSetItem.call(this, e, t);
 
             // Concept player
@@ -1519,7 +1519,7 @@ color:black
             const result = UTPlayerItemView_renderItem.call(this, item, t);
 
             const duplicateIds = await fetchDuplicateIds()
-            console.log(this)
+           
             if (duplicateIds.includes(item.id)){this.__root.style.opacity = "0.4";}
 
             if ( getSettings(0,0,'showPrices')) {
@@ -1662,7 +1662,7 @@ color:black
                 return Promise.reject(response); // 2. reject instead of throw
             })
                 .then((json) => {
-                console.log(json);
+              
                 resolve(json);
             })
                 .catch((error) => {
@@ -1710,7 +1710,7 @@ color:black
 		);
         const doc = new DOMParser().parseFromString(futggSingleCheapestByRatingResponse, 'text/html');
         let playerLink = (doc.getElementsByClassName("fut-card-container")[0].href.split('-')[0]).split('/').pop()
-        console.log(playerLink)
+       
         const futggResponse = await makeGetRequest(
             `https://www.fut.gg/api/fut/player-prices/25/?ids=${playerLink}`
 
@@ -1719,7 +1719,7 @@ color:black
         try {
             priceResponse = JSON.parse(futggResponse);
             priceResponse=priceResponse.data
-            console.log(priceResponse)
+         
         } catch (error) {
 
             console.error(error);
@@ -1754,7 +1754,7 @@ color:black
             try {
                 priceResponse = JSON.parse(futggResponse);
                 priceResponse=priceResponse.data
-                console.log(priceResponse)
+              
                 PriceItem(priceResponse)
 
             } catch (error) {
@@ -1817,7 +1817,7 @@ color:black
                         createSbc=false
                         await showPack(pack,packPlayers)
                     }
-                    console.log('gotounassigned')
+                 
                     await goToUnassignedView()
                     createSBCTab()
                     if(repeat>0){
@@ -1832,7 +1832,7 @@ color:black
 
     };
     const   showPack= async (pack, packPlayers) =>{
-        console.log("opening pack")
+       
 
         return new Promise((resolve, reject) => {
             let c = new UTStoreViewController
@@ -1851,7 +1851,7 @@ color:black
                 packPlayers.items.forEach(function(e) {
                     (!o || o.discardValue < e.discardValue) && (o = e)
                 });
-            console.log(o.rating,o)
+            
 
             if (o && (o.rating>=getSettings(0,0,'animateWalkouts'))) {
 
@@ -1878,7 +1878,7 @@ color:black
     const packOverRide = async () => {
         const packReveal = UTStoreViewController.prototype.eRevealPack
         UTStoreViewController.prototype.eRevealPack  = async function (...args) {
-            console.log(...args)
+          
             packReveal.call(this,...args);
         }
         const packOpen = UTStoreViewController.prototype.eOpenPack;
@@ -1886,14 +1886,14 @@ color:black
             showLoader();
             await sendUnassignedtoTeam();
             createSBCTab()
-            console.log(...args)
+           
             let packs = await getPacks()
             let item =args[2].articleId
 
             if(packs.packs.filter(f=>f.id==item).length>0){
-                console.log('Opening Pack',item,packs.packs.filter(f=>f.id==item)[0])
+               
                 await openPack(packs.packs.filter(f=>f.id==item)[0])
-                console.log('Opened Pack',item)
+               
                 goToUnassignedView()
                 await wait(10)
             }
@@ -1906,7 +1906,7 @@ color:black
 
         UTStoreRevealModalListView.prototype.render = function (...args) {
             storeListView.call(this, ...args);
-            //   console.log('UTStoreRevealModalListView',this.listRows)
+         
         }}
     const playerSlotOverride = () => {
         const playerSlot = UTSquadPitchView.prototype.setSlots;
@@ -2002,7 +2002,7 @@ color:black
 
     const createSBCTab = async () => {
         services.SBC.repository.reset()
-        console.log('Creating Favourites Bar');
+
         let sets = await sbcSets();
         let favourites = sets.categories.filter((f) => f.name == 'Favourites')[0]
         .setIds;
@@ -2033,7 +2033,7 @@ color:black
 
             $('#openPack').click(async function () {
                 packs = await getPacks()
-                console.log('Opening Pack',packs.packs[0])
+              
                 createSBCTab()
                 if (packs.packs.filter(f=>f.id==packs.packs[0].id).length>0){
                     await openPack(packs.packs.filter(f=>f.isMyPack)[0],packs.packs.filter(f=>f.id==packs.packs[0].id).length-1)
@@ -2330,7 +2330,7 @@ color:black
 
 
     const saveSettings = (sbc,challenge,id,value) =>{
-        console.log(sbc,challenge,id,value)
+  
         let settings = getSolverSettings()
         settings['sbcSettings']??={}
         let sbcSettings=settings['sbcSettings']
@@ -2435,7 +2435,7 @@ color:black
         select.addEventListener(
             'change',
             function(event) {
-                console.log(event)
+          
                 saveSettings(sbc,challenge,id,choices.getValue(true))
             },
             false,
