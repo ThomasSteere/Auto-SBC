@@ -1,13 +1,18 @@
 // ==UserScript==
 // @name         FIFA Auto SBC
 // @namespace    http://tampermonkey.net/
-// @version      25.1.1
+// @version      25.1.2
 // @description  automatically solve EAFC 25 SBCs using the currently available players in the club with the minimum cost
 // @author       TitiroMonkey
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
+// @require      https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js
+// @resource     CHOICES_BASE_CSS https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/base.min.css
+// @resource     CHOICES_CSS https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getResourceText
+// @grant        GM_addStyle
 // @connect 	 www.fut.gg
 // @connect      127.0.0.1
 
@@ -15,6 +20,10 @@
 
 (function () {
     'use strict';
+    const myBaseCss = GM_getResourceText("CHOICES_BASE_CSS");
+    // GM_addStyle(myBaseCss);
+    const myCss = GM_getResourceText("CHOICES_CSS");
+    GM_addStyle(myCss);
 
     //turn on console log
     let i = document.createElement('iframe');
@@ -24,7 +33,7 @@
 
     //Add Locked Icon
     let styles = `
-    ::-webkit-scrollbar {
+        ::-webkit-scrollbar {
               -webkit-appearance: none;
      }
 
@@ -97,6 +106,7 @@ word-wrap:breakword;
     justify-content: space-between;
     min-height:85%;
 }
+
 .sbc-settings-header {
     display: flex;
     align-items: center;
@@ -217,6 +227,15 @@ word-wrap:breakword;
 }
 .numCounter b {
   color: black;
+}
+.choices__list--multiple .choices__item {
+background-color: black;
+}
+.choices__inner{
+min-height: 20px;
+}
+.choices{
+color:black
 }
 `;
     let styleSheet = document.createElement('style');
@@ -429,15 +448,15 @@ word-wrap:breakword;
 
         return new Promise((resolve) => {
             if(ulist.filter((l) => l.isDuplicate() && l.untradeable ).length>0){
-            services.Item.move(
-                ulist.filter((l) => l.isDuplicate() && l.untradeable ),
-                7
-            ).observe(this, function (obs, event) {
-                repositories.Item.unassigned.clear();
-                repositories.Item.unassigned.reset();
+                services.Item.move(
+                    ulist.filter((l) => l.isDuplicate() && l.untradeable ),
+                    7
+                ).observe(this, function (obs, event) {
+                    repositories.Item.unassigned.clear();
+                    repositories.Item.unassigned.reset();
                 });
             }
-        resolve(ulist)
+            resolve(ulist)
         })
 
     }
@@ -463,7 +482,7 @@ word-wrap:breakword;
             repositories.Store.setDirty()
             services.Item.requestUnassignedItems().observe(
                 undefined,
-                 (sender, response) => {
+                (sender, response) => {
                     const duplicates = [
                         ...response.response.items.filter((item) => item.duplicateId > 0),
                     ];
@@ -725,7 +744,7 @@ word-wrap:breakword;
                 if (SBCEligibilityKey[keys[0]]=='PLAYER_RARITY_GROUP' && eligibility.kvPairs._collection[keys[0]][0]==27){
                     totwIdx=idx
                 }
-             return {
+                return {
                     scope: SBCEligibilityScope[eligibility.scope],
                     count: eligibility.count,
                     requirementKey: SBCEligibilityKey[keys[0]],
@@ -805,9 +824,10 @@ word-wrap:breakword;
         };
     };
 
-    const duplicateDiscount = 0.01;
+    const duplicateDiscount = 0.1;
     const untradeableDiscount = 0.8;
     const conceptPremium = 10;
+    const evoPremium = 2
     let count
 
     function pad(n, width, z) {
@@ -832,11 +852,19 @@ word-wrap:breakword;
             return sbcPrice *1.5
         }
         if(getPrice(item)==0 && item.rating>87){
-           // console.log(item.rating,sbcPrice,getPrice({definitionId:item.rating+'_CBR'}))
-           return Math.max(item?._itemPriceLimits?.maximum,sbcPrice *1.5)
+            // console.log(item.rating,sbcPrice,getPrice({definitionId:item.rating+'_CBR'}))
+            return Math.max(item?._itemPriceLimits?.maximum,sbcPrice *1.5)
         }
         if(item.concept){
             return conceptPremium * sbcPrice
+        }
+        if (
+            ((item.isSpecial()? '': services.Localization.localize('search.cardLevels.cardLevel' + item.getTier()
+                                                                  ) + ' ') +
+             services.Localization.localize('item.raretype' + item.rareflag
+
+                                           )).includes("volution")){
+            return evoPremium * sbcPrice
         }
         sbcPrice = sbcPrice - (100 - item.rating) //Rating Discount
 
@@ -857,10 +885,10 @@ word-wrap:breakword;
             createSbc=true
             return
         }
-       console.log('Sbc Started')
+        console.log('Sbc Started')
         counter = null
         counter = new Counter('.numCounter', {direction:'rtl', delay:200, digits:3})
-       
+
 
         showLoader();
 
@@ -903,13 +931,21 @@ word-wrap:breakword;
         }
         let maxRating = getSettings(sbcId,sbcData.challengeId,'maxRating')
         let useDupes=getSettings(sbcId,sbcData.challengeId,'useDupes')
+        let excludeLeagues=getSettings(sbcId,sbcData.challengeId,'excludeLeagues') || []
+        let excludeNations=getSettings(sbcId,sbcData.challengeId,'excludeNations') || []
+        let excludeRarity=getSettings(sbcId,sbcData.challengeId,'excludeRarity') || []
+        let excludeTeams=getSettings(sbcId,sbcData.challengeId,'excludeTeams') || []
         let duplicateIds = await fetchDuplicateIds();
-        console.log('Dupes',duplicateIds)
+        console.log('players',players)
         let backendPlayersInput = players
         .filter(
             (item) =>
             item.loans < 0  && (item.rating<=maxRating || (useDupes && duplicateIds.includes(item.id))) &&
             (!isItemLocked(item) || duplicateIds.includes(item.id) )
+            && !excludeLeagues.includes(item.leagueId)
+            && !excludeNations.includes(item.nationId)
+            && !excludeRarity.includes(services.Localization.localize('item.raretype' + item.rareflag))
+            && !excludeTeams.includes(item.teamId)
         )
         .map((item) => {
             if (!item.groups.length) {
@@ -945,7 +981,7 @@ word-wrap:breakword;
                 futggPrice:getPrice(item)
             };
         });
-console.log(backendPlayersInput.filter(f=>f.isDuplicate))
+        console.log(backendPlayersInput.filter(f=>f.isDuplicate))
         const input = JSON.stringify({
             clubPlayers: backendPlayersInput,
             sbcData: sbcData,
@@ -957,7 +993,7 @@ console.log(backendPlayersInput.filter(f=>f.isDuplicate))
         countDownInterval = setInterval(countDown, 1000)
         let solution = await makePostRequest(apiUrl, input);
         clearInterval(countDownInterval)
-          if (createSbc!=true){
+        if (createSbc!=true){
             showNotification("SBC Stopped");
             createSbc=true
             return
@@ -1026,7 +1062,7 @@ console.log(backendPlayersInput.filter(f=>f.isDuplicate))
             ] = players.filter((f) => item.id == f.id)[0];
         });
         _squad.setPlayers(_solutionSquad, true);
-console.log(_squad)
+        console.log(_squad)
         await loadChallenge(_challenge);
         let autoSubmitId=getSettings(sbcId,sbcData.challengeId,'autoSubmit')
         if (((solution.status_code == autoSubmitId) || autoSubmitId==1) && autoSubmit) {
@@ -1034,17 +1070,17 @@ console.log(_squad)
             if (getSettings(sbcId,sbcData.challengeId,'autoOpenPacks')){
                 console.log('Awards',sbcData.awards)
                 repositories.Store.setDirty()
-       console.log('Get Packs')
-              let item = sbcData.awards[0]
-                    console.log('Get Packs')
-                    let packs = await getPacks()
-                    console.log('Opening Pack',item,packs.packs.filter(f=>f.id==item)[0])
+                console.log('Get Packs')
+                let item = sbcData.awards[0]
+                console.log('Get Packs')
+                let packs = await getPacks()
+                console.log('Opening Pack',item,packs.packs.filter(f=>f.id==item)[0])
 
-                    let pack=await openPack(packs.packs.filter(f=>f.id==item)[0])
-                    console.log('Opened Pack',pack)
-                    goToUnassignedView()
+                let pack=await openPack(packs.packs.filter(f=>f.id==item)[0])
+                console.log('Opened Pack',pack)
+                goToUnassignedView()
 
-                 
+
 
             }
             if (!getSettings(sbcId,sbcData.challengeId,'autoOpenPacks')){
@@ -1141,32 +1177,32 @@ console.log(_squad)
     }
     const goToUnassignedView   = async ()=> {
         return new Promise((resolve, reject) => {
-        repositories.Item.unassigned.clear();
-        repositories.Item.unassigned.reset();
-        var r = getCurrentViewController().rootController;
-        showLoader(),
-            services.Item.requestUnassignedItems().observe(this,async function(e, t) {
-            var i;
+            repositories.Item.unassigned.clear();
+            repositories.Item.unassigned.reset();
+            var r = getCurrentViewController().rootController;
+            showLoader(),
+                services.Item.requestUnassignedItems().observe(this,async function(e, t) {
+                var i;
 
-            e.unobserve(r);
-            var o = r.getRootNavigationController();
-            if (o) {
+                e.unobserve(r);
+                var o = r.getRootNavigationController();
+                if (o) {
 
-                var n = isPhone() ? new UTUnassignedItemsViewController : new UTUnassignedItemsSplitViewController;
-                t.success && JSUtils.isObject(t.response) ? n.initWithItems(null === (i = t.response) || void 0 === i ? void 0 : i.items) : n.init()
-                services.Item.clearTransferMarketCache()
-                await swapDuplicatestoTeam()
-                o.popToRootViewController()
-                o.pushViewController(n)
+                    var n = isPhone() ? new UTUnassignedItemsViewController : new UTUnassignedItemsSplitViewController;
+                    t.success && JSUtils.isObject(t.response) ? n.initWithItems(null === (i = t.response) || void 0 === i ? void 0 : i.items) : n.init()
+                    services.Item.clearTransferMarketCache()
+                    await swapDuplicatestoTeam()
+                    o.popToRootViewController()
+                    o.pushViewController(n)
 
-            }
+                }
+                hideLoader();
+                resolve()
+            })
+
             hideLoader();
-            resolve()
-        })
-
-        hideLoader();
-    }
-                           )}
+        }
+                          )}
     const getPacks= async ()=>{
         return new Promise((resolve, reject) => {
             let packResponse
@@ -1176,8 +1212,8 @@ console.log(_squad)
                     obs.unobserve(this);
                     reject(res.status);
                 } else {
-                    console.log(res.response,'jj')
-                   packResponse=res.response
+
+                    packResponse=res.response
                     resolve(packResponse)
                 }
             });
@@ -1333,7 +1369,7 @@ console.log(_squad)
 
                 button.setInteractionState(true);
                 button.setText(label);
-                
+
                 button.addTarget(
                     this,
                     async () => {
@@ -1514,9 +1550,9 @@ console.log(_squad)
     let PRICE_ITEMS_KEY = 'futggPrices';
     let cachedPriceItems;
     let isPriceOld = function (item){
-         let PriceItems = getPriceItems()
-          if(!(item.definitionId in PriceItems)){return true}
-         let cacheMin = item.concept ? 1440 : getSettings(0,0,'priceCacheMinutes')
+        let PriceItems = getPriceItems()
+        if(!(item.definitionId in PriceItems)){return true}
+        let cacheMin = getSettings(0,0,'priceCacheMinutes')
         let timeStamp = new Date(
             PriceItems[item.definitionId]?.timeStamp
         );
@@ -1537,8 +1573,8 @@ console.log(_squad)
         let PriceItems = getPriceItems()
         if(!(item.definitionId in PriceItems)){return null}
         return PriceItems[item.definitionId]?.price
-        
-        
+
+
         //console.log(PriceItems[item.definitionId])
         let cacheMin = item.concept ? 1440 : getSettings(0,0,'priceCacheMinutes')
         let timeStamp = new Date(
@@ -1546,7 +1582,7 @@ console.log(_squad)
         );
 
         let now = new Date(Date.now())
-        
+
         if (
             PriceItems[item.definitionId] &&
             PriceItems[item.definitionId]?.timeStamp  &&
@@ -1564,10 +1600,10 @@ console.log(_squad)
         //  console.log(item, price, lastUpdated)
         let PriceItems = getPriceItems();
         let timeStamp = new Date(Date.now());
-       for (let key in items) {
-           items[key]["timeStamp"] = timeStamp;
-           PriceItems[items[key]["eaId"]]=items[key]
-       }
+        for (let key in items) {
+            items[key]["timeStamp"] = timeStamp;
+            PriceItems[items[key]["eaId"]]=items[key]
+        }
         savePriceItems();
     };
 
@@ -1652,19 +1688,21 @@ console.log(_squad)
     };
 
     const fetchLowestPriceByRating = async () => {
-        
+
         let PriceItems = getPriceItems();
         let timeStamp = new Date(Date.now());
-            
+
         for (let i=45;i<=80;i++){
             PriceItems[i + '_CBR'] = {"price": i<75?200:400,"timestamp":timeStamp}
-               
+
         }
-            
+
         for (let i=80;i<=99;i++){
-            await fetchSingleCheapest(i)
+            if (isPriceOld({"definitionId":i + '_CBR'})){
+                await fetchSingleCheapest(i)
+            }
         }
-        
+
     };
     const fetchSingleCheapest = async(rating)=>{
         const futggSingleCheapestByRatingResponse = await makeGetRequest(
@@ -1683,11 +1721,11 @@ console.log(_squad)
             priceResponse=priceResponse.data
             console.log(priceResponse)
         } catch (error) {
-                
+
             console.error(error);
-        
+
             return;
-        } 
+        }
         let PriceItems = getPriceItems();
         let timeStamp = new Date(Date.now());
         for (let key in priceResponse) {
@@ -1707,7 +1745,7 @@ console.log(_squad)
 
             const playersIdArray = idsArray.splice(0, 50);
 
-            
+
             const futggResponse = await makeGetRequest(
                 `https://www.fut.gg/api/fut/player-prices/25/?ids=${playersIdArray}`
 
@@ -1718,9 +1756,9 @@ console.log(_squad)
                 priceResponse=priceResponse.data
                 console.log(priceResponse)
                 PriceItem(priceResponse)
-               
+
             } catch (error) {
-                
+
                 console.error(error);
                 await wait();
                 continue;
@@ -1780,7 +1818,7 @@ console.log(_squad)
                         await showPack(pack,packPlayers)
                     }
                     console.log('gotounassigned')
-                   await goToUnassignedView()
+                    await goToUnassignedView()
                     createSBCTab()
                     if(repeat>0){
                         repeat=repeat-1
@@ -1823,7 +1861,7 @@ console.log(_squad)
                     a.setAnimationCallback(function() {
                     this.dismissViewController(!1, function() {
                         a.dealloc()
-                      
+
                     }),
                         repositories.Store.setDirty()
 
@@ -1833,7 +1871,7 @@ console.log(_squad)
                     c.presentViewController(a, !0)
             }
 
-resolve()
+            resolve()
         })
 
     }
@@ -1851,7 +1889,7 @@ resolve()
             console.log(...args)
             let packs = await getPacks()
             let item =args[2].articleId
-           
+
             if(packs.packs.filter(f=>f.id==item).length>0){
                 console.log('Opening Pack',item,packs.packs.filter(f=>f.id==item)[0])
                 await openPack(packs.packs.filter(f=>f.id==item)[0])
@@ -2161,7 +2199,7 @@ resolve()
                 saveSettings(0,0,'playSounds',togglePS.getToggleState() )
 
             })
-            
+
             createNumberSpinner(sbcUITile,'Min Rating for Pack Animation','animateWalkouts',1,100,getSettings(0,0,'animateWalkouts'),(toggleAW)=>{
                 saveSettings(0,0,'animateWalkouts',toggleAW.getToggleState())
             })
@@ -2265,12 +2303,34 @@ resolve()
                 createNumberSpinner(sbcParamsTile,'API Max Solve Time','maxSolveTime',10,990,getSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxSolveTime'),(numberspinnerMST)=>{
                     saveSettings(dropdown.getValue(),dropdownChallenge.getValue(),'maxSolveTime',numberspinnerMST.getValue())
                 })
+                //  (parentDiv,label,id,options,value,target)
+                createChoice(sbcParamsTile,'EXCLUDE - Leagues','excludeLeagues',factories.DataProvider.getLeagueDP().map(m=>{return {id:m.id,value:m.id,label:m.label}}).filter(f=>f.id>0),
 
+                             dropdown.getValue(),dropdownChallenge.getValue()
+                            )
+                createChoice(sbcParamsTile,'EXCLUDE - Nations','excludeNations',
+                             factories.DataProvider.getNationDP().map(m=>{return {id:m.id,value:m.id,label:m.label}}).filter(f=>f.id>0),
 
+                             dropdown.getValue(),dropdownChallenge.getValue()
+                            )
+                createChoice(sbcParamsTile,
+                             'EXCLUDE - Teams','excludeTeams',
+                             factories.DataProvider.getTeamDP().map(m=>{return {id:m.id,value:m.id,label:m.label}}).filter(f=>f.id>0 && !f.label.includes('*')),
+                             dropdown.getValue(),dropdownChallenge.getValue()
+                            )
+                createChoice(sbcParamsTile,
+                             'EXCLUDE - Rarity','excludeRarity',
+                             factories.DataProvider.getItemRarityDP({itemSubTypes: [ItemSubType.PLAYER],itemTypes: [ItemType.PLAYER],quality: SearchLevel.ANY,tradableOnly:false}).map(m=>{
+                    return {id:m.id,value:m.label,label:m.label}}).filter(f=>f.id>0 && !f.label.includes('*')),
+                             dropdown.getValue(),dropdownChallenge.getValue()
+                            )
             })
         })
     }
+
+
     const saveSettings = (sbc,challenge,id,value) =>{
+        console.log(sbc,challenge,id,value)
         let settings = getSolverSettings()
         settings['sbcSettings']??={}
         let sbcSettings=settings['sbcSettings']
@@ -2308,8 +2368,8 @@ resolve()
     }
     const createPanel=()=>{
         var panel = document.createElement("div");
-        panel.classList.add("sbc-settings-field"),
-            panel.classList.add("panelActionRow");
+        panel.classList.add("sbc-settings-field")
+
         return panel
     }
     const createNumberSpinner=(parentDiv,label,id,min=0,max=100,value=1,target=()=>{})=>{
@@ -2334,6 +2394,53 @@ resolve()
         //console.log(panel)
         parentDiv.appendChild(panel)
         return panel
+
+    }
+    const createChoice = (parentDiv,label,id,options,sbc,challenge)=>{
+
+        if (document.contains(document.getElementById(id))) {
+            document.getElementById(id).remove();
+        }
+        i = document.createElement("div");
+        i.classList.add("panelActionRow");
+        var o = document.createElement("div");
+        o.classList.add("buttonInfoLabel");
+        var choicesLabel = document.createElement("span")
+        choicesLabel.classList.add("choicesLabel")
+        choicesLabel.innerHTML=label
+        o.appendChild(choicesLabel)
+        i.appendChild(o)
+
+        let panel = createPanel()
+        panel.appendChild(i)
+        panel.setAttribute("id",id);
+        let select = document.createElement('select');
+        select.multiple='multiple';
+        select.setAttribute("id",'choice' + id);
+
+        panel.appendChild(select)
+        parentDiv.appendChild(panel)
+        let currentSettings = getSettings(sbc,challenge,id) || []
+
+
+        const choices = new Choices(select,{
+            choices:options,
+            closeDropdownOnSelect:true,
+            removeItemButton:true,
+            shouldSort:false,
+
+        });
+
+        choices.setChoiceByValue(currentSettings)
+        select.addEventListener(
+            'change',
+            function(event) {
+                console.log(event)
+                saveSettings(sbc,challenge,id,choices.getValue(true))
+            },
+            false,
+        );
+
 
     }
     const createDropDown=(parentDiv,label,id,options,value,target)=>{
@@ -2396,7 +2503,7 @@ resolve()
         tile.classList.add("col-1-1");
         tile.classList.add("sbc-settings-wrapper");
         tile.classList.add("main-header");
-        tile.classList.add("ut-tile-transfer-market");
+
 
         var tileheader = document.createElement("div");
         tileheader.classList.add("sbc-settings-header");
