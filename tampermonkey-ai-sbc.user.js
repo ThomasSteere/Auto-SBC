@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FIFA Auto SBC
 // @namespace    http://tampermonkey.net/
-// @version      25.1.4
+// @version      25.1.5
 // @description  automatically solve EAFC 25 SBCs using the currently available players in the club with the minimum cost
 // @author       TitiroMonkey
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
@@ -992,8 +992,12 @@ color:black
         let useDupes=getSettings(sbcId,sbcData.challengeId,'useDupes')
         let duplicateIds = await fetchDuplicateIds();
         let storageIds = storage.map(m=>m.id)
-        console.log('Dupes',duplicateIds)
-        players.forEach(item=>item.isStorage=storageIds.includes(item.id))
+	players.forEach(item=>item.isStorage=storageIds.includes(item.id))
+        let excludeLeagues=getSettings(sbcId,sbcData.challengeId,'excludeLeagues') || []
+        let excludeNations=getSettings(sbcId,sbcData.challengeId,'excludeNations') || []
+        let excludeRarity=getSettings(sbcId,sbcData.challengeId,'excludeRarity') || []
+        let excludeTeams=getSettings(sbcId,sbcData.challengeId,'excludeTeams') || []
+        
         let backendPlayersInput = players
         .filter(
             (item) =>
