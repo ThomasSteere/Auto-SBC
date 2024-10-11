@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FIFA Auto SBC
 // @namespace    http://tampermonkey.net/
-// @version      25.1.3
+// @version      25.1.4
 // @description  automatically solve EAFC 25 SBCs using the currently available players in the club with the minimum cost
 // @author       TitiroMonkey
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
@@ -237,6 +237,30 @@ min-height: 20px;
 .choices{
 color:black
 }
+.currency-sbc::after {
+    background-position: right top;
+    content: "";
+    background-repeat: no-repeat;
+    background-size: 100%;
+    display: inline-block;
+    height: 1em;
+    vertical-align: middle;
+    width: 1em;
+    background-image: url(../web-app/images/sbc/logo_SBC_home_tile.png);
+    margin-top: -.15em;
+}
+.currency-objective::after {
+    background-position: right top;
+    content: "";
+    background-repeat: no-repeat;
+    background-size: 100%;
+    display: inline-block;
+    height: 1em;
+    vertical-align: middle;
+    width: 1em;
+    background-image: url(../web-app/images/pointsIcon.png);
+    margin-top: -.15em;
+}
 `;
     let styleSheet = document.createElement('style');
     styleSheet.innerText = styles;
@@ -432,6 +456,39 @@ color:black
     ;
     const searchConceptPlayers = (searchCriteria) => {
         return services.Item.searchConceptItems(searchCriteria);
+    };
+    const getStoragePlayers = async function () {
+
+        return new Promise((resolve, reject) => {
+
+            const gatheredPlayers = [];
+            const searchCriteria = new UTBucketedItemSearchViewModel().searchCriteria;
+            searchCriteria.offset = 0;
+            searchCriteria.count = DEFAULT_SEARCH_BATCH_SIZE;
+            const getAllStoragePlayers = () => {
+                searchStoragePlayers(searchCriteria).observe(
+                    this,
+                    async function (sender, response) {
+                        gatheredPlayers.push(...response.response.items);
+                        if (response.status !== 400 && !response.response.endOfList) {
+                            searchCriteria.offset += searchCriteria.count;
+
+                            //console.log('Storages Retrieved',searchCriteria.offset)
+                            getAllStoragePlayers();
+                        } else {                           
+                            resolve(gatheredPlayers);
+                        }
+                    }
+                );
+            };
+            getAllStoragePlayers();
+
+        });
+
+    };
+    ;
+    const searchStoragePlayers = (searchCriteria) => {
+        return services.Item.searchStorageItems(searchCriteria);
     };
     const sendUnassignedtoTeam = async () => {
         let ulist = await fetchUnassigned();
@@ -871,7 +928,7 @@ color:black
 
         sbcPrice = sbcPrice * (duplicateIds.includes(item.id) ? duplicateDiscount : 1) // Dupe Discount
 
-
+        sbcPrice = sbcPrice * (item?.isStorage ? duplicateDiscount : 1) 
         sbcPrice = sbcPrice * (item.untradeable ? untradeableDiscount : 1)
 
 
@@ -911,14 +968,7 @@ color:black
             showNotification('SBC not available', UINotificationType.NEGATIVE);
             return;
         }
-        await sendUnassignedtoTeam()
-        let players = await fetchPlayers();
 
-
-        for (let item of players) {
-            idToPlayerItem[item.definitionId] = item;
-        }
-        await fetchPlayerPrices(players);
         if (getSettings(sbcId,sbcData.challengeId,'useConcepts')) {
             if (conceptPlayersCollected) {
                 players = players.concat(conceptPlayers);
@@ -929,14 +979,21 @@ color:black
                 );
             }
         }
+
+        await sendUnassignedtoTeam()
+        let players = await fetchPlayers();
+        let storage = await getStoragePlayers()
+        players=players.filter(f=>!storage.map(m=>m.definitionId).includes(f.definitionId))
+        players=players.concat(storage)
+        await fetchPlayerPrices(players);
+        
+    
         let maxRating = getSettings(sbcId,sbcData.challengeId,'maxRating')
         let useDupes=getSettings(sbcId,sbcData.challengeId,'useDupes')
-        let excludeLeagues=getSettings(sbcId,sbcData.challengeId,'excludeLeagues') || []
-        let excludeNations=getSettings(sbcId,sbcData.challengeId,'excludeNations') || []
-        let excludeRarity=getSettings(sbcId,sbcData.challengeId,'excludeRarity') || []
-        let excludeTeams=getSettings(sbcId,sbcData.challengeId,'excludeTeams') || []
         let duplicateIds = await fetchDuplicateIds();
-      
+        let storageIds = storage.map(m=>m.id)
+        console.log('Dupes',duplicateIds)
+        players.forEach(item=>item.isStorage=storageIds.includes(item.id))
         let backendPlayersInput = players
         .filter(
             (item) =>
@@ -972,6 +1029,7 @@ color:black
                 ratingTier: item.getTier(),
                 isUntradeable: item.untradeable,
                 isDuplicate: duplicateIds.includes(item.id),
+                isStorage: storageIds.includes(item.id),
                 preferredPosition: item.preferredPosition,
                 possiblePositions: item.possiblePositions,
                 groups: item.groups,
@@ -981,6 +1039,7 @@ color:black
                 futggPrice:getPrice(item)
             };
         });
+        
       
         const input = JSON.stringify({
             clubPlayers: backendPlayersInput,
@@ -1519,16 +1578,19 @@ color:black
             const result = UTPlayerItemView_renderItem.call(this, item, t);
 
             const duplicateIds = await fetchDuplicateIds()
-           
-            if (duplicateIds.includes(item.id)){this.__root.style.opacity = "0.4";}
+            let storage = await getStoragePlayers()
+            if (duplicateIds.includes(item.id) || storage.map(m=>m.id).includes(item.id)){this.__root.style.opacity = "0.4";}
 
             if ( getSettings(0,0,'showPrices')) {
+                let PriceItems = getPriceItems();
+                
                 let price = getPrice(item) * (isItemFixed(item) ? 0 : 1);
+                let symbol = PriceItems[item.definitionId].isSbc?'currency-sbc':PriceItems[item.definitionId].isObjective?'currency-objective':'currency-coins'
                 this.__root.prepend(
                     createElem(
                         'div',
-                        { className: 'currency-coins item-price' },
-                        price.toLocaleString()
+                        { className: `${symbol} item-price` },
+                        PriceItems[item.definitionId].isExtinct?"EXTINCT":price.toLocaleString()
                     )
                 );
             }
@@ -1687,8 +1749,9 @@ color:black
         return number * 1;
     };
 
-    const fetchLowestPriceByRating = async () => {
 
+    const fetchLowestPriceByRating = async () => {
+        
         let PriceItems = getPriceItems();
         let timeStamp = new Date(Date.now());
 
@@ -1741,7 +1804,7 @@ color:black
 
         let totalPrices=idsArray.length
         while (idsArray.length) {
-            let PriceItems = getPriceItems();
+            
 
             const playersIdArray = idsArray.splice(0, 50);
 
